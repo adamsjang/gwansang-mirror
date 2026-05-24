@@ -15,7 +15,7 @@ import {
 } from '../data/interpretations'
 import type { ZoneMeasurement, AdvancedMeasurement } from '../lib/measurements'
 import { track } from '../lib/analytics'
-import { buildShareImage, shareOrDownload } from '../lib/share-image'
+import { buildShareImage, shareOrDownload, SCHEMATIC_DOT_PCT } from '../lib/share-image'
 
 interface Props {
   faceShape: FaceShape
@@ -388,20 +388,34 @@ export default function ResultScreen({
             </figcaption>
           </figure>
           <figure className="rounded-xl overflow-hidden border border-[var(--color-border)] bg-[var(--color-base)]">
-            {schematicUrl ? (
-              <img
-                src={schematicUrl}
-                alt="공유 이미지(얼굴 사진 미포함) 미리보기"
-                className="w-full h-auto block"
-              />
-            ) : (
-              <div className="aspect-[4/5] flex items-center justify-center text-xs text-[var(--color-secondary)]">
-                도식 생성 중…
-              </div>
-            )}
+            <div className="relative">
+              {schematicUrl ? (
+                <img
+                  src={schematicUrl}
+                  alt="공유 이미지(얼굴 사진 미포함) 미리보기"
+                  className="w-full h-auto block"
+                />
+              ) : (
+                <div className="aspect-[4/5] flex items-center justify-center text-xs text-[var(--color-secondary)]">
+                  도식 생성 중…
+                </div>
+              )}
+              {hoverZone && SCHEMATIC_DOT_PCT[hoverZone] && (
+                <span
+                  aria-hidden="true"
+                  className="absolute w-4 h-4 rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{
+                    left: SCHEMATIC_DOT_PCT[hoverZone].left,
+                    top: SCHEMATIC_DOT_PCT[hoverZone].top,
+                    backgroundColor: 'rgba(192, 57, 43, 0.95)',
+                    boxShadow: '0 0 0 2px rgba(255,255,255,0.95), 0 0 0 5px rgba(192,57,43,0.35)',
+                  }}
+                />
+              )}
+            </div>
             <figcaption className="px-4 py-2 text-xs text-[var(--color-secondary)] bg-[var(--color-surface)]">
-              공유 이미지(얼굴 사진 미포함) 미리보기. 아래 "결과 공유"에서 이 이미지를
-              저장하거나 SNS로 보낼 수 있습니다.
+              공유 이미지(얼굴 사진 미포함) 미리보기. 부위 카드 hover/탭 시 캡처와 도식
+              양쪽에 강조됩니다. 아래 "결과 공유"에서 이 이미지를 저장하거나 SNS로 보낼 수 있습니다.
             </figcaption>
           </figure>
         </div>

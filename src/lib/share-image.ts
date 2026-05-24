@@ -4,6 +4,28 @@ import type { FaceShape } from '../data/physiognomy-zones'
 const SHARE_W = 1080
 const SHARE_H = 1350 // 4:5 (인스타그램 친화)
 
+/**
+ * 도식(얼굴 사진 미포함 모드)에서 각 zone의 빨강 anchor dot이 찍히는 위치를
+ * 1080×1350 캔버스 좌표 기준으로 % 변환한 값.
+ *
+ * ResultScreen이 도식 PNG 위에 absolute span을 띄울 때 사용한다. 도식 placeholderH
+ * 또는 dot 좌표가 바뀌면 이 값도 같이 손봐야 한다.
+ *
+ * - ear는 도식에 점이 없으므로 키에 없음 (도식 강조 skip).
+ * - jaw는 얼굴형마다 yBottom이 약간 다른데 (height 430~510), 평균값(53.5%)로 둠.
+ *   사람 눈에 식별 가능한 수준 안의 오차.
+ */
+export const SCHEMATIC_DOT_PCT: Record<string, { left: string; top: string }> = {
+  forehead: { left: '50%', top: '26.7%' },
+  eyebrow: { left: '44.4%', top: '29.7%' },
+  eyes: { left: '44.3%', top: '33.3%' },
+  cheekbone: { left: '38.1%', top: '37.9%' },
+  nose: { left: '50%', top: '38.4%' },
+  philtrum: { left: '50%', top: '43.3%' },
+  mouth: { left: '50%', top: '45.3%' },
+  jaw: { left: '50%', top: '53.5%' },
+}
+
 const ZONE_KOREAN: Record<string, string> = {
   forehead: '이마',
   eyebrow: '눈썹 간격',
