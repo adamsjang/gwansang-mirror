@@ -22,6 +22,7 @@ type AppState =
       measurements: ZoneMeasurement[]
       advanced: AdvancedMeasurement[]
       captureDataUrl: string
+      landmarks: NormalizedLandmark[]
     }
 
 const WASM_BASE =
@@ -231,6 +232,7 @@ export default function App() {
         measurements,
         advanced,
         captureDataUrl,
+        landmarks,
       })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -296,6 +298,7 @@ export default function App() {
           measurements={state.measurements}
           advanced={state.advanced}
           captureDataUrl={state.captureDataUrl}
+          landmarks={state.landmarks}
           onRetake={handleRetake}
           onExit={handleExit}
         />

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 import {
   ZONES,
   FACE_SHAPE_KAG_SLUG,
@@ -21,6 +22,7 @@ interface Props {
   measurements: ZoneMeasurement[]
   advanced: AdvancedMeasurement[]
   captureDataUrl: string
+  landmarks: NormalizedLandmark[]
   onRetake: () => void
   onExit: () => void
 }
@@ -233,6 +235,7 @@ export default function ResultScreen({
   measurements,
   advanced,
   captureDataUrl,
+  landmarks,
   onRetake,
   onExit,
 }: Props) {
@@ -241,6 +244,42 @@ export default function ResultScreen({
   const [sharing, setSharing] = useState(false)
   const [shareNotice, setShareNotice] = useState<string>('')
   const [includePhoto, setIncludePhoto] = useState(false)
+
+  // hover/tap 시 캡처 이미지 위에 해당 zone landmark 강조
+  const [hoverZone, setHoverZone] = useState<string | null>(null)
+  const imgRef = useRef<HTMLImageElement | null>(null)
+  const overlayRef = useRef<HTMLCanvasElement | null>(null)
+
+  useEffect(() => {
+    const canvas = overlayRef.current
+    const img = imgRef.current
+    if (!canvas || !img || !img.complete) return
+    const w = img.clientWidth
+    const h = img.clientHeight
+    if (w === 0 || h === 0) return
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, w, h)
+    if (!hoverZone) return
+    const zone = ZONES.find((z) => z.id === hoverZone)
+    if (!zone) return
+    ctx.fillStyle = 'rgba(192, 57, 43, 0.9)'
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)'
+    ctx.lineWidth = 2
+    for (const idx of zone.landmarkIndices) {
+      const lm = landmarks[idx]
+      if (!lm) continue
+      // 캡처 이미지가 mirror 되어 있으므로 x를 반전
+      const px = (1 - lm.x) * w
+      const py = lm.y * h
+      ctx.beginPath()
+      ctx.arc(px, py, 6, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+    }
+  }, [hoverZone, landmarks])
 
   async function handleShare() {
     if (sharing) return
@@ -301,13 +340,24 @@ export default function ResultScreen({
 
       {captureDataUrl && (
         <figure className="mb-8 rounded-xl overflow-hidden border border-[var(--color-border)] bg-black">
-          <img
-            src={captureDataUrl}
-            alt="분석에 사용된 사진 — 부위 강조 점 표시"
-            className="w-full h-auto block"
-          />
+          <div className="relative">
+            <img
+              ref={imgRef}
+              src={captureDataUrl}
+              alt="분석에 사용된 사진 — 부위 강조 점 표시"
+              onLoad={() => setHoverZone((z) => z)} // 트리거 redraw
+              className="w-full h-auto block"
+            />
+            <canvas
+              ref={overlayRef}
+              aria-hidden="true"
+              className="absolute inset-0 w-full h-full pointer-events-none"
+            />
+          </div>
           <figcaption className="px-4 py-2 text-xs text-[var(--color-secondary)] bg-[var(--color-surface)]">
-            노란 점 = 측정에 사용된 얼굴 부위 좌표 (브라우저 내 처리, 저장되지 않음)
+            노란 점 = 측정에 사용된 얼굴 부위 좌표. 아래 부위 카드에 마우스를 올리면
+            (모바일은 카드를 누르면) 해당 부위가 빨간 점으로 강조됩니다. 이미지는 브라우저
+            내 처리, 저장되지 않습니다.
           </figcaption>
         </figure>
       )}
@@ -341,10 +391,17 @@ export default function ResultScreen({
             const interpretation = m
               ? getZoneInterpretation(z.id, m.level)
               : NO_MEASUREMENT_INTERPRETATION[z.id] ?? null
+            const isActive = hoverZone === z.id
             return (
               <article
                 key={z.id}
-                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5"
+                onMouseEnter={() => setHoverZone(z.id)}
+                onMouseLeave={() => setHoverZone((cur) => (cur === z.id ? null : cur))}
+                onTouchStart={() => setHoverZone(z.id)}
+                className="rounded-xl border bg-[var(--color-surface)] p-5 transition-colors"
+                style={{
+                  borderColor: isActive ? 'var(--color-accent)' : 'var(--color-border)',
+                }}
               >
                 <h2 className="text-base font-semibold text-[var(--color-primary)] mb-2">
                   {z.name}

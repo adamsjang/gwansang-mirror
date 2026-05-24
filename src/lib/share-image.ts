@@ -188,63 +188,79 @@ export async function buildShareImage(args: BuildArgs): Promise<Blob> {
     ctx.save()
     ctx.strokeStyle = '#8B6914'
     ctx.fillStyle = '#8B6914'
-    ctx.lineWidth = 3
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
 
-    // 눈썹 (좌/우) — 살짝 아치
+    // 눈썹 (좌/우) — 두꺼운 stroke, 살짝 아치
+    ctx.lineWidth = 4
     const browY = centerY - 95
     ctx.beginPath()
-    ctx.moveTo(centerX - 95, browY + 6)
-    ctx.quadraticCurveTo(centerX - 60, browY - 10, centerX - 25, browY + 6)
+    ctx.moveTo(centerX - 98, browY + 8)
+    ctx.quadraticCurveTo(centerX - 60, browY - 12, centerX - 22, browY + 8)
     ctx.stroke()
     ctx.beginPath()
-    ctx.moveTo(centerX + 25, browY + 6)
-    ctx.quadraticCurveTo(centerX + 60, browY - 10, centerX + 95, browY + 6)
+    ctx.moveTo(centerX + 22, browY + 8)
+    ctx.quadraticCurveTo(centerX + 60, browY - 12, centerX + 98, browY + 8)
     ctx.stroke()
 
-    // 눈 (좌/우) — 작은 타원 + 동공 점
+    // 눈 (좌/우) — 약간 가로로 더 긴 타원 + 차분한 동공
+    ctx.lineWidth = 3
     const eyeY = centerY - 50
     ctx.beginPath()
-    ctx.ellipse(centerX - 60, eyeY, 28, 10, 0, 0, Math.PI * 2)
+    ctx.ellipse(centerX - 62, eyeY, 32, 9, 0, 0, Math.PI * 2)
     ctx.stroke()
     ctx.beginPath()
-    ctx.ellipse(centerX + 60, eyeY, 28, 10, 0, 0, Math.PI * 2)
+    ctx.ellipse(centerX + 62, eyeY, 32, 9, 0, 0, Math.PI * 2)
     ctx.stroke()
     ctx.beginPath()
-    ctx.arc(centerX - 60, eyeY, 4, 0, Math.PI * 2)
+    ctx.arc(centerX - 62, eyeY, 3, 0, Math.PI * 2)
     ctx.fill()
     ctx.beginPath()
-    ctx.arc(centerX + 60, eyeY, 4, 0, Math.PI * 2)
+    ctx.arc(centerX + 62, eyeY, 3, 0, Math.PI * 2)
     ctx.fill()
 
-    // 코 — 수직 콧날 + 끝의 작은 곡선
+    // 코 — 부드러운 콧날 + 좌우 콧방울 작은 호
+    ctx.lineWidth = 3
     ctx.beginPath()
-    ctx.moveTo(centerX, centerY - 15)
-    ctx.lineTo(centerX, centerY + 38)
-    ctx.quadraticCurveTo(centerX, centerY + 48, centerX + 9, centerY + 50)
+    ctx.moveTo(centerX, centerY - 12)
+    ctx.bezierCurveTo(
+      centerX - 1, centerY + 18,
+      centerX - 5, centerY + 44,
+      centerX, centerY + 50
+    )
+    ctx.stroke()
+    // 콧방울 좌/우
+    ctx.beginPath()
+    ctx.arc(centerX - 7, centerY + 50, 6, Math.PI * 0.0, Math.PI * 0.9)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(centerX + 7, centerY + 50, 6, Math.PI * 0.1, Math.PI * 1.0)
     ctx.stroke()
 
-    // 인중 — 코밑부터 입 사이 짧은 세로선
+    // 인중 — 코밑에서 입까지 좁고 부드러운 세로선
+    ctx.lineWidth = 2.5
     ctx.beginPath()
-    ctx.moveTo(centerX, centerY + 65)
-    ctx.lineTo(centerX, centerY + 92)
+    ctx.moveTo(centerX, centerY + 72)
+    ctx.lineTo(centerX, centerY + 96)
     ctx.stroke()
 
-    // 입 — 살짝 미소 곡선
-    const mouthY = centerY + 105
+    // 입 — 잔잔한 미소 (곡률 살짝 줄임)
+    ctx.lineWidth = 3
+    const mouthY = centerY + 108
     ctx.beginPath()
-    ctx.moveTo(centerX - 38, mouthY)
-    ctx.quadraticCurveTo(centerX, mouthY + 14, centerX + 38, mouthY)
+    ctx.moveTo(centerX - 42, mouthY)
+    ctx.quadraticCurveTo(centerX, mouthY + 10, centerX + 42, mouthY)
     ctx.stroke()
 
-    // 광대 — 좌우에 작은 하이라이트 호
-    const cheekY = centerY + 10
+    // 광대 — 좌우에 짧은 하이라이트 호 (살짝 길고 옅게)
+    ctx.lineWidth = 2.5
+    ctx.strokeStyle = 'rgba(139, 105, 20, 0.65)'
+    const cheekY = centerY + 12
     ctx.beginPath()
-    ctx.arc(centerX - 130, cheekY, 12, Math.PI * 0.2, Math.PI * 0.8)
+    ctx.arc(centerX - 128, cheekY, 14, Math.PI * 0.15, Math.PI * 0.85)
     ctx.stroke()
     ctx.beginPath()
-    ctx.arc(centerX + 130, cheekY, 12, Math.PI * 0.2, Math.PI * 0.8)
+    ctx.arc(centerX + 128, cheekY, 14, Math.PI * 0.15, Math.PI * 0.85)
     ctx.stroke()
 
     ctx.restore()
