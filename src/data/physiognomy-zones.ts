@@ -59,12 +59,20 @@ export const ZONES: PhysZone[] = [
     order: 3,
   },
   {
+    id: 'ear',
+    name: '귀',
+    kagSlug: 'ear-physiognomy',
+    meaning: '전통 관상에서 귀는 복귀(福耳)와 건강운의 자리로 다뤄집니다.',
+    landmarkIndices: [234, 454, 93, 323, 132, 361],
+    order: 4,
+  },
+  {
     id: 'nose',
     name: '코',
     kagSlug: 'nose-physiognomy',
     meaning: '코는 단순한 재물운이 아니라 의지와 자존의 자리로 해석됩니다.',
     landmarkIndices: [1, 4, 5, 6, 168, 19, 197],
-    order: 4,
+    order: 5,
   },
   {
     id: 'cheekbone',
@@ -72,7 +80,7 @@ export const ZONES: PhysZone[] = [
     kagSlug: 'cheekbone-reading',
     meaning: '광대는 추진력과 사회적 존재감을 드러내는 자리로 봅니다.',
     landmarkIndices: [116, 117, 118, 345, 346, 347, 50, 280],
-    order: 5,
+    order: 6,
   },
   {
     id: 'philtrum',
@@ -80,7 +88,7 @@ export const ZONES: PhysZone[] = [
     kagSlug: 'philtrum-reading',
     meaning: '코와 입 사이 인중은 생명력과 자녀운의 자리로 다뤄집니다.',
     landmarkIndices: [0, 164],
-    order: 6,
+    order: 7,
   },
   {
     id: 'mouth',
@@ -88,7 +96,7 @@ export const ZONES: PhysZone[] = [
     kagSlug: 'mouth-physiognomy',
     meaning: '입은 말과 관계의 상징, 표현 방식이 드러나는 자리로 봅니다.',
     landmarkIndices: [61, 291, 13, 14, 17],
-    order: 7,
+    order: 8,
   },
   {
     id: 'jaw',
@@ -96,7 +104,7 @@ export const ZONES: PhysZone[] = [
     kagSlug: 'jaw-physiognomy',
     meaning: '턱은 말년운과 안정감의 자리로 해석됩니다.',
     landmarkIndices: [152, 175, 199, 200, 18, 377, 148],
-    order: 8,
+    order: 9,
   },
 ];
 

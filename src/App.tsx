@@ -4,12 +4,18 @@ import IntroScreen from './components/IntroScreen'
 import CameraScreen from './components/CameraScreen'
 import ResultScreen from './components/ResultScreen'
 import { classifyFaceShape } from './lib/face-shape'
+import { computeMeasurements, type ZoneMeasurement } from './lib/measurements'
 import { ZONES, FACE_SHAPES, type FaceShape } from './data/physiognomy-zones'
 
 type AppState =
   | { kind: 'intro' }
   | { kind: 'camera' }
-  | { kind: 'result'; faceShape: FaceShape }
+  | {
+      kind: 'result'
+      faceShape: FaceShape
+      measurements: ZoneMeasurement[]
+      captureDataUrl: string
+    }
 
 const WASM_BASE =
   'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm'
@@ -144,6 +150,39 @@ export default function App() {
     }
   }
 
+  /** video frame을 좌우 반전 + 부위 landmark 표시로 한 장 캡처. */
+  function captureSnapshot(video: HTMLVideoElement, landmarks: NormalizedLandmark[]): string {
+    const c = document.createElement('canvas')
+    c.width = video.videoWidth
+    c.height = video.videoHeight
+    const ctx = c.getContext('2d')
+    if (!ctx) return ''
+    ctx.save()
+    // 사용자가 본 미러 뷰와 일치시키기 위해 좌우 반전
+    ctx.translate(c.width, 0)
+    ctx.scale(-1, 1)
+    ctx.drawImage(video, 0, 0, c.width, c.height)
+    ctx.restore()
+
+    // 부위 강조 점 — 사용자가 결과 카드와 시각적으로 매칭할 수 있도록
+    ctx.fillStyle = 'rgba(139, 105, 20, 0.9)'
+    const zonePoints = new Set<number>()
+    for (const z of ZONES) for (const i of z.landmarkIndices) zonePoints.add(i)
+    for (const i of zonePoints) {
+      const lm = landmarks[i]
+      if (!lm) continue
+      // landmark는 정규화 좌표 (0~1). 미러된 캔버스 좌표계는 우→좌이므로
+      // 표시할 x를 (1 - lm.x)로 변환
+      const px = (1 - lm.x) * c.width
+      const py = lm.y * c.height
+      ctx.beginPath()
+      ctx.arc(px, py, 3.5, 0, 2 * Math.PI)
+      ctx.fill()
+    }
+
+    return c.toDataURL('image/jpeg', 0.85)
+  }
+
   async function handleAnalyze() {
     const v = videoRef.current
     if (!v || !landmarkerRef.current) return
@@ -167,8 +206,10 @@ export default function App() {
       }
       drawOverlay(landmarks)
       const shape = classifyFaceShape(landmarks)
+      const measurements = computeMeasurements(landmarks)
+      const captureDataUrl = captureSnapshot(v, landmarks)
       stopStream()
-      setState({ kind: 'result', faceShape: shape })
+      setState({ kind: 'result', faceShape: shape, measurements, captureDataUrl })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       setErrorMsg(`분석 실패: ${message}`)
@@ -230,6 +271,8 @@ export default function App() {
       {state.kind === 'result' && (
         <ResultScreen
           faceShape={state.faceShape ?? FACE_SHAPES.oval}
+          measurements={state.measurements}
+          captureDataUrl={state.captureDataUrl}
           onRetake={handleRetake}
           onExit={handleExit}
         />
