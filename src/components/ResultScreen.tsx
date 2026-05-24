@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ZONES,
   FACE_SHAPE_KAG_SLUG,
@@ -12,6 +12,7 @@ import {
   FACE_SHAPE_INTERPRETATIONS,
 } from '../data/interpretations'
 import type { ZoneMeasurement } from '../lib/measurements'
+import { track } from '../lib/analytics'
 
 interface Props {
   faceShape: FaceShape
@@ -21,63 +22,14 @@ interface Props {
   onExit: () => void
 }
 
-function levelDotColor(level: 'low' | 'mid' | 'high') {
-  if (level === 'mid') return '#6B5744'
-  return '#8B6914'
+type Archetype = 'balance' | 'single' | 'cumulative' | 'mismatch'
+
+interface DerivedArchetype {
+  archetype: Archetype
+  primary?: ZoneMeasurement
+  secondary?: ZoneMeasurement
 }
 
-function InterestForm() {
-  const [email, setEmail] = useState('')
-  const [submitted, setSubmitted] = useState(false)
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!email.trim() || !email.includes('@')) return
-    // MVP: localStorage 저장 (demand 측정용 backend는 후속)
-    try {
-      const existing = JSON.parse(localStorage.getItem('interest_emails') ?? '[]') as string[]
-      if (!existing.includes(email)) existing.push(email)
-      localStorage.setItem('interest_emails', JSON.stringify(existing))
-    } catch {
-      /* ignore */
-    }
-    setSubmitted(true)
-  }
-
-  if (submitted) {
-    return (
-      <p className="text-sm text-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] border border-[var(--color-accent)] rounded-lg px-4 py-3">
-        관심 등록되었습니다. 정식 리포트가 준비되면 안내드리겠습니다.
-      </p>
-    )
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2">
-      <input
-        type="email"
-        required
-        placeholder="이메일 (출시 안내용)"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        aria-label="관심 등록 이메일"
-        className="flex-1 px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
-      />
-      <button
-        type="submit"
-        className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
-        style={{ backgroundColor: 'var(--color-accent)' }}
-      >
-        관심 등록
-      </button>
-    </form>
-  )
-}
-
-/**
- * 부위별 전통 관상의 발현 시기 — 통변 미리보기에 시간성을 부여하기 위함.
- * (관상학 통설; 단정 아닌 참고 기준)
- */
 const ZONE_PERIOD: Record<string, string> = {
   forehead: '초년',
   eyebrow: '30대 초',
@@ -112,14 +64,29 @@ function levelTone(level: 'low' | 'mid' | 'high'): string {
   return '평균'
 }
 
-function CombinatorialPreview({ measurements }: { measurements: ZoneMeasurement[] }) {
-  // 평균에서 벗어난 부위를 강한 순으로 정렬 — 단일 강조 / 같은 방향 누적 / 양방향 어긋남
-  // 세 가지 패턴으로 미리보기 한 줄을 다르게 짠다.
+function deriveArchetype(measurements: ZoneMeasurement[]): DerivedArchetype {
   const offMid = measurements
     .filter((m) => m.level !== 'mid')
     .sort((a, b) => Math.abs(b.ratio - 0.5) - Math.abs(a.ratio - 0.5))
+  if (offMid.length === 0) return { archetype: 'balance' }
+  if (offMid.length === 1) return { archetype: 'single', primary: offMid[0] }
+  const sameDir = offMid[0].level === offMid[1].level
+  return {
+    archetype: sameDir ? 'cumulative' : 'mismatch',
+    primary: offMid[0],
+    secondary: offMid[1],
+  }
+}
 
-  if (offMid.length === 0) {
+function levelDotColor(level: 'low' | 'mid' | 'high') {
+  if (level === 'mid') return '#6B5744'
+  return '#8B6914'
+}
+
+function CombinatorialPreview({ derived }: { derived: DerivedArchetype }) {
+  const { archetype, primary, secondary } = derived
+
+  if (archetype === 'balance') {
     return (
       <p className="text-sm text-[var(--color-secondary)] leading-relaxed">
         모든 부위가 평균 범위 안에 머무는 <strong className="text-[var(--color-primary)]">조화로운 균형형</strong>입니다.
@@ -129,25 +96,21 @@ function CombinatorialPreview({ measurements }: { measurements: ZoneMeasurement[
     )
   }
 
-  const a = offMid[0]
-  const b = offMid[1]
-
-  if (!b) {
+  if (archetype === 'single' && primary) {
     return (
       <p className="text-sm text-[var(--color-secondary)] leading-relaxed">
-        <strong className="text-[var(--color-primary)]">{zoneTag(a.zoneId)}</strong>만 평균에서 뚜렷이 벗어났고 나머지는 균형 —
-        한 부위가 혼자 자기 색을 강하게 드러내는 조합입니다. 전통 관상에서는 이런 단일 강조가
+        <strong className="text-[var(--color-primary)]">{zoneTag(primary.zoneId)}</strong>만 평균에서 뚜렷이 벗어났고
+        나머지는 균형 — 한 부위가 혼자 자기 색을 강하게 드러내는 조합입니다. 전통 관상에서는 이런 단일 강조가
         그 시기에 어떻게 발현되고, 다른 시기와는 어떻게 어긋나는지를…
       </p>
     )
   }
 
-  const sameDirection = a.level === b.level
-  if (sameDirection) {
+  if (archetype === 'cumulative' && primary && secondary) {
     return (
       <p className="text-sm text-[var(--color-secondary)] leading-relaxed">
-        <strong className="text-[var(--color-primary)]">{zoneTag(a.zoneId)}</strong>와{' '}
-        <strong className="text-[var(--color-primary)]">{zoneTag(b.zoneId)}</strong>가 같은 방향으로 기운{' '}
+        <strong className="text-[var(--color-primary)]">{zoneTag(primary.zoneId)}</strong>와{' '}
+        <strong className="text-[var(--color-primary)]">{zoneTag(secondary.zoneId)}</strong>가 같은 방향으로 기운{' '}
         <strong className="text-[var(--color-primary)]">누적형 조합</strong>입니다.
         두 시기가 같은 흐름을 가리킬 때 전통 관상에서는 그 흐름이 한 사람의 삶에서 어떻게 두꺼워지고,
         어디서 한계로 작용하는지를…
@@ -155,13 +118,110 @@ function CombinatorialPreview({ measurements }: { measurements: ZoneMeasurement[
     )
   }
 
+  if (archetype === 'mismatch' && primary && secondary) {
+    return (
+      <p className="text-sm text-[var(--color-secondary)] leading-relaxed">
+        <strong className="text-[var(--color-primary)]">{zoneTag(primary.zoneId)}</strong>는 {levelTone(primary.level)}인데{' '}
+        <strong className="text-[var(--color-primary)]">{zoneTag(secondary.zoneId)}</strong>는 {levelTone(secondary.level)} —
+        두 시기가 정반대 방향을 가리키는 <strong className="text-[var(--color-primary)]">어긋남 조합</strong>입니다.
+        통변(通變)은 바로 이런 어긋남이 인생 어디서 어떻게 풀려나가는지를 읽는 일인데요…
+      </p>
+    )
+  }
+
+  return null
+}
+
+function InterestForm({ archetype }: { archetype: Archetype }) {
+  const [email, setEmail] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
+
+  useEffect(() => {
+    track('interest_form_shown', { archetype })
+  }, [archetype])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const trimmed = email.trim()
+    if (!trimmed || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
+      setErrorMsg('이메일 형식을 확인해 주세요.')
+      return
+    }
+    setErrorMsg('')
+    setSubmitting(true)
+    track('interest_submit_attempt', { archetype })
+
+    try {
+      const res = await fetch('/api/interest', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: trimmed, archetype }),
+      })
+      if (res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { status?: string }
+        track('interest_submitted', {
+          archetype,
+          storage: 'backend',
+          status: data.status ?? 'ok',
+        })
+        setSubmitted(true)
+        return
+      }
+      // 4xx/5xx — 백엔드 거부 또는 장애. 로컬 백업.
+      throw new Error(`server ${res.status}`)
+    } catch {
+      try {
+        const existing = JSON.parse(
+          localStorage.getItem('interest_emails') ?? '[]'
+        ) as string[]
+        if (!existing.includes(trimmed)) existing.push(trimmed)
+        localStorage.setItem('interest_emails', JSON.stringify(existing))
+      } catch {
+        /* ignore */
+      }
+      track('interest_submitted', { archetype, storage: 'localStorage' })
+      setSubmitted(true)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (submitted) {
+    return (
+      <p className="text-sm text-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] border border-[var(--color-accent)] rounded-lg px-4 py-3">
+        관심 등록되었습니다. 정식 리포트가 준비되면 안내드리겠습니다.
+      </p>
+    )
+  }
+
   return (
-    <p className="text-sm text-[var(--color-secondary)] leading-relaxed">
-      <strong className="text-[var(--color-primary)]">{zoneTag(a.zoneId)}</strong>는 {levelTone(a.level)}인데{' '}
-      <strong className="text-[var(--color-primary)]">{zoneTag(b.zoneId)}</strong>는 {levelTone(b.level)} —
-      두 시기가 정반대 방향을 가리키는 <strong className="text-[var(--color-primary)]">어긋남 조합</strong>입니다.
-      통변(通變)은 바로 이런 어긋남이 인생 어디서 어떻게 풀려나가는지를 읽는 일인데요…
-    </p>
+    <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2">
+      <input
+        type="email"
+        required
+        placeholder="이메일 (출시 안내용)"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        disabled={submitting}
+        aria-label="관심 등록 이메일"
+        className="flex-1 px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-sm focus:outline-none focus:border-[var(--color-accent)] disabled:opacity-60"
+      />
+      <button
+        type="submit"
+        disabled={submitting}
+        className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity disabled:opacity-60"
+        style={{ backgroundColor: 'var(--color-accent)' }}
+      >
+        {submitting ? '등록 중…' : '관심 등록'}
+      </button>
+      {errorMsg && (
+        <p role="alert" className="text-xs text-red-700 self-center">
+          {errorMsg}
+        </p>
+      )}
+    </form>
   )
 }
 
@@ -173,6 +233,19 @@ export default function ResultScreen({
   onExit,
 }: Props) {
   const measureByZone = new Map(measurements.map((m) => [m.zoneId, m]))
+  const derived = deriveArchetype(measurements)
+
+  useEffect(() => {
+    track('result_screen_viewed', {
+      face_shape: faceShape.id,
+      measurement_count: measurements.length,
+      archetype: derived.archetype,
+      primary_zone: derived.primary?.zoneId,
+      primary_level: derived.primary?.level,
+    })
+    // measurements는 한 분석 사이클 안에서 stable. ResultScreen 마운트 시 한 번만 발화.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
@@ -215,6 +288,7 @@ export default function ResultScreen({
           href={`${KAG_BASE_URL}/${FACE_SHAPE_KAG_SLUG}`}
           target="_blank"
           rel="noreferrer"
+          onClick={() => track('kag_link_clicked', { zone: 'faceShape' })}
           className="inline-flex items-center gap-1 text-xs text-[var(--color-secondary)] hover:text-[var(--color-accent)] underline underline-offset-2"
         >
           이 부위 전통 해석 더 깊이 보기 →
@@ -264,6 +338,7 @@ export default function ResultScreen({
                   href={`${KAG_BASE_URL}/${z.kagSlug}`}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={() => track('kag_link_clicked', { zone: z.id })}
                   className="text-xs text-[var(--color-secondary)] hover:text-[var(--color-accent)] underline underline-offset-2"
                 >
                   이 부위 전통 해석 더 깊이 보기 →
@@ -289,14 +364,14 @@ export default function ResultScreen({
         </p>
 
         <div className="mb-4 p-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]">
-          <CombinatorialPreview measurements={measurements} />
+          <CombinatorialPreview derived={derived} />
           <p className="mt-2 text-xs text-[var(--color-secondary)] italic">
             이 뒤로 부위 조합 해석 + 캡처 이미지 + 측정값을 정리한 정식 리포트(PDF/PNG)가
             이어집니다. 관심 있으시면 출시 안내를 받아 보세요.
           </p>
         </div>
 
-        <InterestForm />
+        <InterestForm archetype={derived.archetype} />
       </section>
 
       <section
@@ -309,6 +384,7 @@ export default function ResultScreen({
             href={`${KAG_BASE_URL}/${mi.slug}`}
             target="_blank"
             rel="noreferrer"
+            onClick={() => track('kag_link_clicked', { zone: `meta:${mi.slug}` })}
             className="block rounded-xl border border-dashed border-[var(--color-border)] p-4 hover:border-[var(--color-accent)] transition-colors"
           >
             <p className="text-sm font-semibold text-[var(--color-primary)] mb-1">{mi.name}</p>

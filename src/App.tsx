@@ -6,6 +6,7 @@ import ResultScreen from './components/ResultScreen'
 import { classifyFaceShape } from './lib/face-shape'
 import { computeMeasurements, type ZoneMeasurement } from './lib/measurements'
 import { ZONES, FACE_SHAPES, type FaceShape } from './data/physiognomy-zones'
+import { track } from './lib/analytics'
 
 type AppState =
   | { kind: 'intro' }
@@ -117,15 +118,18 @@ export default function App() {
 
   async function handleStart() {
     setErrorMsg('')
+    track('camera_start_attempt')
     try {
       await ensureLandmarker()
       await startCameraAndPlay()
       setState({ kind: 'camera' })
+      track('camera_started')
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       setErrorMsg(`초기화 실패: ${message}`)
       stopStream()
       setState({ kind: 'intro' })
+      track('camera_start_failed', { message: message.slice(0, 200) })
     }
   }
 
@@ -209,6 +213,10 @@ export default function App() {
       const measurements = computeMeasurements(landmarks)
       const captureDataUrl = captureSnapshot(v, landmarks)
       stopStream()
+      track('analysis_completed', {
+        face_shape: shape.id,
+        measurement_count: measurements.length,
+      })
       setState({ kind: 'result', faceShape: shape, measurements, captureDataUrl })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)

@@ -8,14 +8,16 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler pages deploy dist --project-name=gwansang-mirror --branch=main"
+    "deploy": "npm run build && wrangler pages deploy dist --project-name=gwansang-mirror --branch=main --commit-dirty=true --commit-message=deploy"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.35",
+    "posthog-js": "^1.376.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260524.1",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^24.12.3",
