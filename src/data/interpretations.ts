@@ -1,0 +1,183 @@
+/**
+ * 부위별 측정 결과에 매핑되는 자체 해석 텍스트 (LLM 초안 — 사용자 검수 대상).
+ *
+ * 톤 기준: KAG 운세 참고서 익현(益軒)의 글체 — 정중한 ~합니다체, "전통 관상에서는",
+ * "~로 봐 왔습니다", "참고 자료" 등. 단정 회피, 외모 평가 금지 의식.
+ *
+ * 결과 카드 안에 들어가는 텍스트라 KAG 본문보다 짧게 (2~3문장).
+ *
+ * 같은 데이터가 추후 유료 "통합 해석" 단계에서 부위 조합 해석의 베이스로
+ * 재사용된다. 그래서 prose가 아니라 구조화 데이터로 둠.
+ */
+
+export type Level = 'low' | 'mid' | 'high'
+
+export interface ZoneInterpretation {
+  zoneId: string
+  level: Level
+  text: string
+}
+
+const ZONE_INTERPRETATIONS_LIST: ZoneInterpretation[] = [
+  // 이마
+  {
+    zoneId: 'forehead',
+    level: 'low',
+    text: '전통 관상에서 좁은 이마는 이론보다 직접 경험을 통해 배우는 실용적·행동 중심의 사고 성향으로 봐 왔습니다. 지능의 많고 적음이 아니라 학습 방향이 다를 수 있다는 참고 기준입니다.',
+  },
+  {
+    zoneId: 'forehead',
+    level: 'mid',
+    text: '평균적인 이마는 사고와 행동의 균형이 잡힌 안정적인 기질로 해석합니다. 한쪽으로 치우치지 않은 사고 방식, 무난한 초년의 흐름과 연결지어 봐 왔습니다.',
+  },
+  {
+    zoneId: 'forehead',
+    level: 'high',
+    text: '넓은 이마는 사고의 폭이 넓고 학문적·분석적 탐구를 즐기는 성향으로 해석해 온 자리입니다. 초년기에 지적 자극을 풍부히 받는 환경과 연관 짓기도 합니다.',
+  },
+
+  // 눈썹 (두 눈썹 사이 거리)
+  {
+    zoneId: 'eyebrow',
+    level: 'low',
+    text: '두 눈썹 사이가 가까우면 한 가지 주제에 깊이 몰입하는 집중형 기질로 봐 왔습니다. 작은 일에도 신경을 쓰는 예민함이 함께 다뤄지기도 합니다.',
+  },
+  {
+    zoneId: 'eyebrow',
+    level: 'mid',
+    text: '균형 잡힌 눈썹 간격은 인간관계와 일 사이에서 무난한 거리감을 유지하는 기질로 해석합니다.',
+  },
+  {
+    zoneId: 'eyebrow',
+    level: 'high',
+    text: '눈썹 사이가 넓으면 마음의 여유가 있고 사소한 일에 흔들리지 않는 너른 성향으로 봐 왔습니다. 결정이 다소 느릴 수 있다는 면과 함께 다뤄지기도 합니다.',
+  },
+
+  // 눈
+  {
+    zoneId: 'eyes',
+    level: 'low',
+    text: '비교적 작은 눈은 신중하고 관찰력이 뛰어난 기질로 해석합니다. 감정 표현을 절제하고 내면을 깊이 다스리는 성향과 연결지어 봐 왔습니다.',
+  },
+  {
+    zoneId: 'eyes',
+    level: 'mid',
+    text: '평균적인 눈 크기는 감정 표현과 절제의 균형이 잡힌 기질로 봅니다.',
+  },
+  {
+    zoneId: 'eyes',
+    level: 'high',
+    text: '큰 눈은 표현이 풍부하고 호기심이 강한 외향적 기질로 해석해 온 자리입니다. 감정의 결이 얼굴에 잘 드러나는 솔직함과 연결됩니다.',
+  },
+
+  // 코
+  {
+    zoneId: 'nose',
+    level: 'low',
+    text: '비교적 짧은 코는 협동적이고 주변과 조화를 이루는 기질로 봐 왔습니다. 강한 자아 표현보다 공동체 안에서 역할을 수행하는 방식을 선호하는 경향과 연결됩니다.',
+  },
+  {
+    zoneId: 'nose',
+    level: 'mid',
+    text: '균형 잡힌 코 길이는 자아 표현과 협력의 균형이 잡힌 기질로 해석합니다.',
+  },
+  {
+    zoneId: 'nose',
+    level: 'high',
+    text: '긴 코는 자존감이 강하고 자신의 판단에 확신을 갖는 독립적·주도적 기질로 해석해 온 자리입니다. 단순한 재물운이 아니라 자아의 힘과 방향으로 다뤄집니다.',
+  },
+
+  // 광대
+  {
+    zoneId: 'cheekbone',
+    level: 'low',
+    text: '좁은 광대는 차분하고 내성적인 기질, 자기 영역 안에서 깊이 작업하는 성향으로 봐 왔습니다.',
+  },
+  {
+    zoneId: 'cheekbone',
+    level: 'mid',
+    text: '균형 잡힌 광대는 추진력과 절제가 함께 작동하는 기질로 해석합니다.',
+  },
+  {
+    zoneId: 'cheekbone',
+    level: 'high',
+    text: '넓은 광대는 사회적 존재감과 추진력이 두드러지는 기질로 봅니다. 무리 속에서 자연스레 영향력을 발휘하는 경향과 연결됩니다.',
+  },
+
+  // 인중
+  {
+    zoneId: 'philtrum',
+    level: 'low',
+    text: '짧은 인중은 결단이 빠르고 즉흥적인 기질로 해석해 온 자리입니다. 생명력의 표현이 짧고 강한 호흡으로 나타나는 성향과 연결됩니다.',
+  },
+  {
+    zoneId: 'philtrum',
+    level: 'mid',
+    text: '평균적인 인중은 생명력 표현의 균형이 잡힌 기질로 봅니다.',
+  },
+  {
+    zoneId: 'philtrum',
+    level: 'high',
+    text: '긴 인중은 끈기와 지구력, 오랜 호흡으로 일을 끌고 가는 기질로 해석합니다. 전통적으로 장수와 후손운을 함께 다루는 자리입니다.',
+  },
+
+  // 입
+  {
+    zoneId: 'mouth',
+    level: 'low',
+    text: '좁은 입은 말과 표현이 절제된 신중한 기질로 봐 왔습니다. 깊이 있는 일대일 관계를 선호하는 성향과 연결됩니다.',
+  },
+  {
+    zoneId: 'mouth',
+    level: 'mid',
+    text: '평균적인 입 폭은 말과 표현의 균형이 잡힌 기질로 봅니다.',
+  },
+  {
+    zoneId: 'mouth',
+    level: 'high',
+    text: '넓은 입은 표현이 풍부하고 사교적인 기질로 해석합니다. 다양한 관계를 넓게 가꾸는 성향과 연결됩니다.',
+  },
+
+  // 턱
+  {
+    zoneId: 'jaw',
+    level: 'low',
+    text: '짧은 턱은 결정이 빠르고 새로운 방향을 빠르게 선택하는 기질로 봐 왔습니다. 말년의 흐름이 활동적이고 변화에 열린 성향과 연결됩니다.',
+  },
+  {
+    zoneId: 'jaw',
+    level: 'mid',
+    text: '균형 잡힌 턱은 결단과 지속의 균형이 잡힌 기질로 봅니다.',
+  },
+  {
+    zoneId: 'jaw',
+    level: 'high',
+    text: '긴 턱은 인내심과 안정감이 두드러지는 기질로 해석합니다. 전통적으로 말년운의 평안과 연관 짓는 자리입니다.',
+  },
+]
+
+const ZONE_INTERPRETATION_MAP = new Map<string, ZoneInterpretation>()
+for (const it of ZONE_INTERPRETATIONS_LIST) {
+  ZONE_INTERPRETATION_MAP.set(`${it.zoneId}:${it.level}`, it)
+}
+
+export function getZoneInterpretation(zoneId: string, level: Level): string | null {
+  return ZONE_INTERPRETATION_MAP.get(`${zoneId}:${level}`)?.text ?? null
+}
+
+/** 귀처럼 측정이 없는 부위에 노출할 기본 텍스트 */
+export const NO_MEASUREMENT_INTERPRETATION: Record<string, string> = {
+  ear: '정면 카메라로는 귀의 형태를 정확히 측정하기 어렵습니다. 전통 관상에서 귀는 복귀(福耳)와 건강운의 자리로 다뤄지며, 형태별 자세한 해석은 위의 운세 참고서 글에서 확인하실 수 있습니다.',
+}
+
+/** 얼굴형 분류 결과별 자체 해석 */
+export const FACE_SHAPE_INTERPRETATIONS: Record<string, string> = {
+  round:
+    '둥근 얼굴은 부드럽고 친화적인 인상으로 봐 왔습니다. 사람과의 거리감이 빠르게 좁혀지는 성향, 안정과 화합을 중시하는 기질로 해석합니다.',
+  oval:
+    '타원형 얼굴은 균형 잡힌 인상으로 다뤄집니다. 감정과 이성의 조절, 사회성과 자기 시간의 균형 같은 중도적 기질과 연결됩니다.',
+  long:
+    '긴 얼굴은 사색적이고 차분한 인상으로 봐 왔습니다. 한 가지 주제를 오래 파고드는 집중형 기질, 신중한 판단과 연결되는 자리입니다.',
+  square:
+    '각형 얼굴은 의지와 결단력이 두드러지는 인상으로 봅니다. 한번 시작한 일을 끝까지 끌고 가는 기질, 분명한 자기 원칙과 연결지어 해석합니다.',
+}

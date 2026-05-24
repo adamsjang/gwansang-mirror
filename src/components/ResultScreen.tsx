@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   ZONES,
   FACE_SHAPE_KAG_SLUG,
@@ -5,6 +6,11 @@ import {
   META_LINKS,
   type FaceShape,
 } from '../data/physiognomy-zones'
+import {
+  getZoneInterpretation,
+  NO_MEASUREMENT_INTERPRETATION,
+  FACE_SHAPE_INTERPRETATIONS,
+} from '../data/interpretations'
 import type { ZoneMeasurement } from '../lib/measurements'
 
 interface Props {
@@ -16,9 +22,88 @@ interface Props {
 }
 
 function levelDotColor(level: 'low' | 'mid' | 'high') {
-  // KAG 컬러 팔레트를 따라 차분한 톤
   if (level === 'mid') return '#6B5744'
   return '#8B6914'
+}
+
+function InterestForm() {
+  const [email, setEmail] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!email.trim() || !email.includes('@')) return
+    // MVP: localStorage 저장 (demand 측정용 backend는 후속)
+    try {
+      const existing = JSON.parse(localStorage.getItem('interest_emails') ?? '[]') as string[]
+      if (!existing.includes(email)) existing.push(email)
+      localStorage.setItem('interest_emails', JSON.stringify(existing))
+    } catch {
+      /* ignore */
+    }
+    setSubmitted(true)
+  }
+
+  if (submitted) {
+    return (
+      <p className="text-sm text-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] border border-[var(--color-accent)] rounded-lg px-4 py-3">
+        관심 등록되었습니다. 정식 리포트가 준비되면 안내드리겠습니다.
+      </p>
+    )
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2">
+      <input
+        type="email"
+        required
+        placeholder="이메일 (출시 안내용)"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        aria-label="관심 등록 이메일"
+        className="flex-1 px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
+      />
+      <button
+        type="submit"
+        className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+        style={{ backgroundColor: 'var(--color-accent)' }}
+      >
+        관심 등록
+      </button>
+    </form>
+  )
+}
+
+function CombinatorialPreview({ measurements }: { measurements: ZoneMeasurement[] }) {
+  // 하이라이트 2개 부위만 골라 미리보기 한 줄 — 자세한 해석은 잠금
+  const named: Record<string, string> = {
+    forehead: '이마',
+    eyebrow: '눈썹 간격',
+    eyes: '눈',
+    nose: '코',
+    cheekbone: '광대',
+    philtrum: '인중',
+    mouth: '입',
+    jaw: '턱',
+  }
+  const labelOf = (lv: 'low' | 'mid' | 'high', zone: string) => {
+    const z = named[zone] ?? zone
+    if (lv === 'mid') return `${z}은 평균`
+    return `${z}은 ${lv === 'low' ? '평균보다 작은/짧은 편' : '평균보다 큰/긴 편'}`
+  }
+  // 가장 평균에서 벗어난 두 측정값 선택
+  const sorted = [...measurements].sort(
+    (a, b) => Math.abs(b.ratio - 0.5) - Math.abs(a.ratio - 0.5)
+  )
+  const a = sorted[0]
+  const b = sorted[1]
+  if (!a || !b) return null
+  return (
+    <p className="text-sm text-[var(--color-secondary)] leading-relaxed">
+      당신의 경우 {labelOf(a.level, a.zoneId)}, {labelOf(b.level, b.zoneId)}로 측정됐습니다.
+      이 조합이 전통 관상에서 어떻게 통변(通變)되는지는…
+    </p>
+  )
 }
 
 export default function ResultScreen({
@@ -39,9 +124,9 @@ export default function ResultScreen({
         부위 측정 결과
       </h1>
       <p className="text-sm text-[var(--color-secondary)] leading-relaxed mb-6">
-        촬영한 한 장에서 추출한 비율 측정값과 분류입니다. 학술적 정확도가 아니라
-        대략적 분포 기준의 상대적 위치이므로, 참고용으로 보시고 결과를 외모
-        평가나 단정에 사용하지 마세요.
+        촬영한 한 장에서 추출한 비율 측정값과 분류, 그리고 전통 관상의 해석입니다.
+        학술적 정확도가 아니라 분포 기준의 상대적 위치이므로 참고용으로 보시고,
+        결과를 외모 평가나 단정에 사용하지 마세요.
       </p>
 
       {captureDataUrl && (
@@ -65,15 +150,15 @@ export default function ResultScreen({
           {faceShape.name}
         </h2>
         <p className="text-sm text-[var(--color-secondary)] leading-relaxed mb-3">
-          {faceShape.description}
+          {FACE_SHAPE_INTERPRETATIONS[faceShape.id] ?? faceShape.description}
         </p>
         <a
           href={`${KAG_BASE_URL}/${FACE_SHAPE_KAG_SLUG}`}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1 text-sm font-medium text-[var(--color-accent)] hover:underline"
+          className="inline-flex items-center gap-1 text-xs text-[var(--color-secondary)] hover:text-[var(--color-accent)] underline underline-offset-2"
         >
-          얼굴형 관상 자세히 보기 →
+          이 부위 전통 해석 더 깊이 보기 →
         </a>
       </section>
 
@@ -82,6 +167,9 @@ export default function ResultScreen({
           .sort((a, b) => a.order - b.order)
           .map((z) => {
             const m = measureByZone.get(z.id)
+            const interpretation = m
+              ? getZoneInterpretation(z.id, m.level)
+              : NO_MEASUREMENT_INTERPRETATION[z.id] ?? null
             return (
               <article
                 key={z.id}
@@ -91,11 +179,12 @@ export default function ResultScreen({
                   {z.name}
                 </h2>
 
-                {m ? (
-                  <div className="mb-3 border-l-2 pl-3" style={{ borderColor: levelDotColor(m.level) }}>
-                    <p className="text-xs text-[var(--color-secondary)] mb-0.5">
-                      {m.ratioLabel}
-                    </p>
+                {m && (
+                  <div
+                    className="mb-3 border-l-2 pl-3"
+                    style={{ borderColor: levelDotColor(m.level) }}
+                  >
+                    <p className="text-xs text-[var(--color-secondary)] mb-0.5">{m.ratioLabel}</p>
                     <p className="text-sm text-[var(--color-primary)]">
                       <span className="font-semibold tabular-nums">{(m.ratio * 100).toFixed(1)}%</span>
                       <span className="mx-2 text-[var(--color-secondary)]">·</span>
@@ -104,26 +193,51 @@ export default function ResultScreen({
                       </span>
                     </p>
                   </div>
-                ) : (
-                  <p className="mb-3 text-xs text-[var(--color-secondary)] italic">
-                    정면 카메라로는 형태 측정이 어려운 부위입니다.
+                )}
+
+                {interpretation && (
+                  <p className="text-sm text-[var(--color-primary)] leading-relaxed mb-3">
+                    {interpretation}
                   </p>
                 )}
 
-                <p className="text-sm text-[var(--color-secondary)] leading-relaxed mb-3">
-                  {z.meaning}
-                </p>
                 <a
                   href={`${KAG_BASE_URL}/${z.kagSlug}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-sm font-medium text-[var(--color-accent)] hover:underline"
+                  className="text-xs text-[var(--color-secondary)] hover:text-[var(--color-accent)] underline underline-offset-2"
                 >
-                  {z.name} 관상 자세히 →
+                  이 부위 전통 해석 더 깊이 보기 →
                 </a>
               </article>
             )
           })}
+      </section>
+
+      {/* Phase B1 — 통합 해석 잠금 + 관심 등록 */}
+      <section
+        aria-label="통합 해석 (정식 리포트)"
+        className="mb-8 rounded-xl border-2 border-dashed border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_4%,transparent)] p-5"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <span aria-hidden="true" className="text-[var(--color-accent)]">🔒</span>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-accent)]">
+            통합 해석 (정식 리포트, 준비 중)
+          </p>
+        </div>
+        <p className="text-sm font-semibold text-[var(--color-primary)] mb-3">
+          여러 부위의 조합 — 진짜 관상가가 보는 통변(通變)
+        </p>
+
+        <div className="mb-4 p-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]">
+          <CombinatorialPreview measurements={measurements} />
+          <p className="mt-2 text-xs text-[var(--color-secondary)] italic">
+            이 뒤로 부위 조합 해석 + 캡처 이미지 + 측정값을 정리한 정식 리포트(PDF/PNG)가
+            이어집니다. 관심 있으시면 출시 안내를 받아 보세요.
+          </p>
+        </div>
+
+        <InterestForm />
       </section>
 
       <section
@@ -138,12 +252,8 @@ export default function ResultScreen({
             rel="noreferrer"
             className="block rounded-xl border border-dashed border-[var(--color-border)] p-4 hover:border-[var(--color-accent)] transition-colors"
           >
-            <p className="text-sm font-semibold text-[var(--color-primary)] mb-1">
-              {mi.name}
-            </p>
-            <p className="text-xs text-[var(--color-secondary)] leading-relaxed">
-              {mi.blurb}
-            </p>
+            <p className="text-sm font-semibold text-[var(--color-primary)] mb-1">{mi.name}</p>
+            <p className="text-xs text-[var(--color-secondary)] leading-relaxed">{mi.blurb}</p>
           </a>
         ))}
       </section>
