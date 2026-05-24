@@ -4,7 +4,12 @@ import IntroScreen from './components/IntroScreen'
 import CameraScreen from './components/CameraScreen'
 import ResultScreen from './components/ResultScreen'
 import { classifyFaceShape } from './lib/face-shape'
-import { computeMeasurements, type ZoneMeasurement } from './lib/measurements'
+import {
+  computeMeasurements,
+  computeAdvancedMeasurements,
+  type ZoneMeasurement,
+  type AdvancedMeasurement,
+} from './lib/measurements'
 import { ZONES, FACE_SHAPES, type FaceShape } from './data/physiognomy-zones'
 import { track } from './lib/analytics'
 
@@ -15,6 +20,7 @@ type AppState =
       kind: 'result'
       faceShape: FaceShape
       measurements: ZoneMeasurement[]
+      advanced: AdvancedMeasurement[]
       captureDataUrl: string
     }
 
@@ -211,13 +217,21 @@ export default function App() {
       drawOverlay(landmarks)
       const shape = classifyFaceShape(landmarks)
       const measurements = computeMeasurements(landmarks)
+      const advanced = computeAdvancedMeasurements(landmarks)
       const captureDataUrl = captureSnapshot(v, landmarks)
       stopStream()
       track('analysis_completed', {
         face_shape: shape.id,
         measurement_count: measurements.length,
+        advanced_count: advanced.length,
       })
-      setState({ kind: 'result', faceShape: shape, measurements, captureDataUrl })
+      setState({
+        kind: 'result',
+        faceShape: shape,
+        measurements,
+        advanced,
+        captureDataUrl,
+      })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       setErrorMsg(`분석 실패: ${message}`)
@@ -280,6 +294,7 @@ export default function App() {
         <ResultScreen
           faceShape={state.faceShape ?? FACE_SHAPES.oval}
           measurements={state.measurements}
+          advanced={state.advanced}
           captureDataUrl={state.captureDataUrl}
           onRetake={handleRetake}
           onExit={handleExit}

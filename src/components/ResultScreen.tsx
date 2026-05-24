@@ -10,13 +10,15 @@ import {
   getZoneInterpretation,
   NO_MEASUREMENT_INTERPRETATION,
   FACE_SHAPE_INTERPRETATIONS,
+  ADVANCED_INTERPRETATIONS,
 } from '../data/interpretations'
-import type { ZoneMeasurement } from '../lib/measurements'
+import type { ZoneMeasurement, AdvancedMeasurement } from '../lib/measurements'
 import { track } from '../lib/analytics'
 
 interface Props {
   faceShape: FaceShape
   measurements: ZoneMeasurement[]
+  advanced: AdvancedMeasurement[]
   captureDataUrl: string
   onRetake: () => void
   onExit: () => void
@@ -228,6 +230,7 @@ function InterestForm({ archetype }: { archetype: Archetype }) {
 export default function ResultScreen({
   faceShape,
   measurements,
+  advanced,
   captureDataUrl,
   onRetake,
   onExit,
@@ -347,6 +350,42 @@ export default function ResultScreen({
             )
           })}
       </section>
+
+      {/* 정밀 측정 (β) — 각도 기반 sub-measurements */}
+      {advanced.length > 0 && (
+        <section aria-label="정밀 측정" className="mb-8">
+          <div className="flex items-baseline gap-2 mb-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-accent)]">
+              정밀 측정
+            </p>
+            <span className="text-xs text-[var(--color-secondary)]">β</span>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-3">
+            {advanced.map((a) => {
+              const interpretation = ADVANCED_INTERPRETATIONS[a.id]?.[a.level]
+              return (
+                <article
+                  key={a.id}
+                  className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+                >
+                  <p className="text-xs text-[var(--color-secondary)] mb-1">{a.name}</p>
+                  <p
+                    className="text-base font-semibold mb-2"
+                    style={{ color: levelDotColor(a.level) }}
+                  >
+                    {a.levelLabel}
+                  </p>
+                  {interpretation && (
+                    <p className="text-xs text-[var(--color-primary)] leading-relaxed">
+                      {interpretation}
+                    </p>
+                  )}
+                </article>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Phase B1 — 통합 해석 잠금 + 관심 등록 */}
       <section

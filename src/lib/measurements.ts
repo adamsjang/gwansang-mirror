@@ -202,3 +202,135 @@ export function computeMeasurements(landmarks: NormalizedLandmark[]): ZoneMeasur
 
   return out
 }
+
+/* ============================================================================
+ * 정밀 측정 (β) — 각도 기반 sub-measurements
+ *
+ * 면적·길이가 아니라 각도·기울기를 잡는 측정값.
+ * MediaPipe 정면 mesh로 충분히 안정적인 3종부터 시작:
+ *  - 눈꼬리 각도 (eye_tilt)
+ *  - 입꼬리 각도 (mouth_corner)
+ *  - 눈썹 아치 (eyebrow_arch)
+ *
+ * 부호가 있는 ratio를 그대로 다루므로 ZoneMeasurement(>=0 비율 가정)와
+ * 분리된 타입으로 둔다.
+ * ========================================================================== */
+
+export interface AdvancedMeasurement {
+  id: 'eye_tilt' | 'mouth_corner' | 'eyebrow_arch'
+  name: string
+  ratio: number // 부호 있음. 음수 = low 방향, 양수 = high 방향
+  level: 'low' | 'mid' | 'high'
+  /** 사용자에게 보일 분류 라벨 (예: "올라간 편") */
+  levelLabel: string
+}
+
+interface AdvancedThreshold {
+  low: number // 이 값 이하면 'low'
+  high: number // 이 값 이상이면 'high'
+  labels: { low: string; mid: string; high: string }
+  name: string
+}
+
+const ADV_THRESHOLDS: Record<AdvancedMeasurement['id'], AdvancedThreshold> = {
+  eye_tilt: {
+    low: -0.05,
+    high: 0.05,
+    labels: { low: '처진 편', mid: '거의 평행', high: '올라간 편' },
+    name: '눈꼬리 각도',
+  },
+  mouth_corner: {
+    low: -0.04,
+    high: 0.04,
+    labels: { low: '올라간 편', mid: '거의 평', high: '처진 편' },
+    name: '입꼬리 각도',
+  },
+  eyebrow_arch: {
+    low: -0.02,
+    high: 0.02,
+    labels: { low: '평행에 가까운 편', mid: '완만한 아치', high: '뚜렷한 아치' },
+    name: '눈썹 아치',
+  },
+}
+
+function classifyAdv(ratio: number, t: AdvancedThreshold): 'low' | 'mid' | 'high' {
+  if (ratio <= t.low) return 'low'
+  if (ratio >= t.high) return 'high'
+  return 'mid'
+}
+
+function makeAdv(id: AdvancedMeasurement['id'], ratio: number): AdvancedMeasurement {
+  const t = ADV_THRESHOLDS[id]
+  const level = classifyAdv(ratio, t)
+  return {
+    id,
+    name: t.name,
+    ratio,
+    level,
+    levelLabel: t.labels[level],
+  }
+}
+
+/**
+ * 정밀 측정 계산.
+ *
+ * 측정 정의:
+ *  - eye_tilt: (안쪽 눈꼬리.y − 바깥쪽 눈꼬리.y) / 눈 너비. 좌·우 평균.
+ *      양수 = 바깥쪽이 위 = 올라간 눈
+ *  - mouth_corner: (입꼬리 평균.y − 윗입술 중심.y) / 입 폭.
+ *      양수 = 입꼬리가 중심보다 아래 = 처짐
+ *  - eyebrow_arch: (눈썹 양 끝 평균.y − 눈썹 가운데.y) / 눈썹 폭. 좌·우 평균.
+ *      양수 = 가운데가 위 = 아치형
+ */
+export function computeAdvancedMeasurements(
+  landmarks: NormalizedLandmark[]
+): AdvancedMeasurement[] {
+  const out: AdvancedMeasurement[] = []
+
+  // eye_tilt
+  const eyeLOut = landmarks[33]
+  const eyeLIn = landmarks[133]
+  const eyeROut = landmarks[263]
+  const eyeRIn = landmarks[362]
+  if (eyeLOut && eyeLIn && eyeROut && eyeRIn) {
+    const widthL = dist(eyeLOut, eyeLIn)
+    const widthR = dist(eyeROut, eyeRIn)
+    // 왼쪽 눈: 바깥(33).x < 안쪽(133).x. 바깥이 안쪽보다 y가 작으면 올라간 눈
+    // tilt = (inner.y - outer.y) / width. 양수 = 바깥이 위 = 올라감
+    const tiltL = widthL > 0 ? (eyeLIn.y - eyeLOut.y) / widthL : 0
+    const tiltR = widthR > 0 ? (eyeRIn.y - eyeROut.y) / widthR : 0
+    out.push(makeAdv('eye_tilt', (tiltL + tiltR) / 2))
+  }
+
+  // mouth_corner
+  const lipL = landmarks[61]
+  const lipR = landmarks[291]
+  const lipTop = landmarks[0]
+  if (lipL && lipR && lipTop) {
+    const mouthWidth = dist(lipL, lipR)
+    if (mouthWidth > 0) {
+      const cornerAvgY = (lipL.y + lipR.y) / 2
+      // 양수 = 입꼬리가 중심보다 아래 (처짐)
+      out.push(makeAdv('mouth_corner', (cornerAvgY - lipTop.y) / mouthWidth))
+    }
+  }
+
+  // eyebrow_arch
+  // 왼쪽 눈썹: 바깥 70, 가운데 105, 안쪽 107
+  // 오른쪽 눈썹: 바깥 300, 가운데 334, 안쪽 336
+  const browLOut = landmarks[70]
+  const browLMid = landmarks[105]
+  const browLIn = landmarks[107]
+  const browROut = landmarks[300]
+  const browRMid = landmarks[334]
+  const browRIn = landmarks[336]
+  if (browLOut && browLMid && browLIn && browROut && browRMid && browRIn) {
+    const wL = dist(browLOut, browLIn)
+    const wR = dist(browROut, browRIn)
+    const archL = wL > 0 ? ((browLOut.y + browLIn.y) / 2 - browLMid.y) / wL : 0
+    const archR = wR > 0 ? ((browROut.y + browRIn.y) / 2 - browRMid.y) / wR : 0
+    out.push(makeAdv('eyebrow_arch', (archL + archR) / 2))
+  }
+
+  return out
+}
