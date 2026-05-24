@@ -26,6 +26,8 @@ interface BuildArgs {
   faceShape: FaceShape
   measurements: ZoneMeasurement[]
   advanced: AdvancedMeasurement[]
+  /** false면 캡처 사진 자리에 placeholder 도식만 그림 (얼굴 비식별화) */
+  includePhoto: boolean
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -64,28 +66,99 @@ export async function buildShareImage(args: BuildArgs): Promise<Blob> {
   ctx.font = '28px "Noto Sans KR", "Apple SD Gothic Neo", sans-serif'
   ctx.fillText('관상경 — 내 얼굴 부위 측정', SHARE_W / 2, 140)
 
-  // 캡처 사진
-  const img = await loadImage(args.captureDataUrl)
+  // 사진 영역 — 사용자 토글로 원본 vs 비식별 도식 선택
   const photoSize = 540
-  const naturalRatio = img.height / img.width
-  const photoW = photoSize
-  const photoH = photoSize * naturalRatio
-  const photoX = (SHARE_W - photoW) / 2
+  const photoX = (SHARE_W - photoSize) / 2
   const photoY = 180
-
-  ctx.save()
-  // 부드러운 액자 — 모서리 라운드
   const r = 16
-  ctx.beginPath()
-  ctx.moveTo(photoX + r, photoY)
-  ctx.arcTo(photoX + photoW, photoY, photoX + photoW, photoY + photoH, r)
-  ctx.arcTo(photoX + photoW, photoY + photoH, photoX, photoY + photoH, r)
-  ctx.arcTo(photoX, photoY + photoH, photoX, photoY, r)
-  ctx.arcTo(photoX, photoY, photoX + photoW, photoY, r)
-  ctx.closePath()
-  ctx.clip()
-  ctx.drawImage(img, photoX, photoY, photoW, photoH)
-  ctx.restore()
+  let photoH: number
+
+  if (args.includePhoto) {
+    // 원본 사진 (사용자가 의식적으로 토글 ON)
+    const img = await loadImage(args.captureDataUrl)
+    const naturalRatio = img.height / img.width
+    photoH = photoSize * naturalRatio
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(photoX + r, photoY)
+    ctx.arcTo(photoX + photoSize, photoY, photoX + photoSize, photoY + photoH, r)
+    ctx.arcTo(photoX + photoSize, photoY + photoH, photoX, photoY + photoH, r)
+    ctx.arcTo(photoX, photoY + photoH, photoX, photoY, r)
+    ctx.arcTo(photoX, photoY, photoX + photoSize, photoY, r)
+    ctx.closePath()
+    ctx.clip()
+    ctx.drawImage(img, photoX, photoY, photoSize, photoH)
+    ctx.restore()
+  } else {
+    // 비식별 도식 — 얼굴형 외곽선 + 부위 점만
+    const placeholderH = 540
+    photoH = placeholderH
+    ctx.save()
+    // 부드러운 배경 카드
+    ctx.fillStyle = 'rgba(139, 105, 20, 0.05)'
+    ctx.beginPath()
+    ctx.moveTo(photoX + r, photoY)
+    ctx.arcTo(photoX + photoSize, photoY, photoX + photoSize, photoY + placeholderH, r)
+    ctx.arcTo(photoX + photoSize, photoY + placeholderH, photoX, photoY + placeholderH, r)
+    ctx.arcTo(photoX, photoY + placeholderH, photoX, photoY, r)
+    ctx.arcTo(photoX, photoY, photoX + photoSize, photoY, r)
+    ctx.closePath()
+    ctx.fill()
+    ctx.restore()
+
+    // 얼굴형별 도식 윤곽
+    const centerX = SHARE_W / 2
+    const centerY = photoY + placeholderH / 2
+    ctx.save()
+    ctx.strokeStyle = '#8B6914'
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    if (args.faceShape.id === 'round') {
+      ctx.arc(centerX, centerY, 190, 0, Math.PI * 2)
+    } else if (args.faceShape.id === 'long') {
+      ctx.ellipse(centerX, centerY, 150, 230, 0, 0, Math.PI * 2)
+    } else if (args.faceShape.id === 'square') {
+      const half = 180
+      ctx.moveTo(centerX - half, centerY - half + 20)
+      ctx.lineTo(centerX + half, centerY - half + 20)
+      ctx.lineTo(centerX + half, centerY + half - 20)
+      ctx.lineTo(centerX - half, centerY + half - 20)
+      ctx.closePath()
+    } else {
+      // oval (기본)
+      ctx.ellipse(centerX, centerY, 170, 220, 0, 0, Math.PI * 2)
+    }
+    ctx.stroke()
+    ctx.restore()
+
+    // 부위 위치 점 (도식적 표시 — 실제 좌표 아님)
+    ctx.fillStyle = 'rgba(139, 105, 20, 0.85)'
+    const dotR = 6
+    const points: { x: number; y: number }[] = [
+      { x: centerX, y: centerY - 140 }, // 이마
+      { x: centerX - 60, y: centerY - 80 }, // 왼 눈썹
+      { x: centerX + 60, y: centerY - 80 }, // 오른 눈썹
+      { x: centerX - 60, y: centerY - 50 }, // 왼 눈
+      { x: centerX + 60, y: centerY - 50 }, // 오른 눈
+      { x: centerX - 110, y: centerY - 10 }, // 왼 광대
+      { x: centerX + 110, y: centerY - 10 }, // 오른 광대
+      { x: centerX, y: centerY + 20 }, // 코
+      { x: centerX, y: centerY + 70 }, // 인중
+      { x: centerX, y: centerY + 100 }, // 입
+      { x: centerX, y: centerY + 170 }, // 턱
+    ]
+    for (const p of points) {
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, dotR, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    // 비식별 표시 라벨
+    ctx.fillStyle = '#6B5744'
+    ctx.font = '20px "Noto Sans KR", sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('얼굴 사진은 공유에 포함되지 않습니다', centerX, photoY + placeholderH - 24)
+  }
 
   // 얼굴형 라벨
   let cursorY = photoY + photoH + 50

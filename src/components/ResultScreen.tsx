@@ -240,22 +240,28 @@ export default function ResultScreen({
   const derived = deriveArchetype(measurements)
   const [sharing, setSharing] = useState(false)
   const [shareNotice, setShareNotice] = useState<string>('')
+  const [includePhoto, setIncludePhoto] = useState(false)
 
   async function handleShare() {
     if (sharing) return
     setSharing(true)
     setShareNotice('')
-    track('share_clicked', { archetype: derived.archetype })
+    track('share_clicked', { archetype: derived.archetype, include_photo: includePhoto })
     try {
       const blob = await buildShareImage({
         captureDataUrl,
         faceShape,
         measurements,
         advanced,
+        includePhoto,
       })
       const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
       const result = await shareOrDownload(blob, `gwansang-${stamp}.png`)
-      track('share_completed', { result, archetype: derived.archetype })
+      track('share_completed', {
+        result,
+        archetype: derived.archetype,
+        include_photo: includePhoto,
+      })
       if (result === 'downloaded') setShareNotice('이미지를 저장했습니다.')
       else if (result === 'cancelled') setShareNotice('공유가 취소되었습니다.')
     } catch (e) {
@@ -425,9 +431,26 @@ export default function ResultScreen({
           결과 공유
         </p>
         <p className="text-sm text-[var(--color-secondary)] leading-relaxed mb-3">
-          캡처 사진과 부위 분류 결과를 한 장의 이미지로 저장하거나 SNS·메신저로
-          공유할 수 있습니다. 이미지에 통합 해석 텍스트는 포함되지 않습니다.
+          부위 분류 결과를 한 장의 이미지로 저장하거나 SNS·메신저로 공유할 수
+          있습니다. 통합 해석 텍스트는 이미지에 포함되지 않습니다.
         </p>
+
+        <label className="flex items-start gap-3 mb-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={includePhoto}
+            onChange={(e) => setIncludePhoto(e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-[var(--color-accent)] shrink-0"
+          />
+          <span className="text-sm text-[var(--color-primary)]">
+            <strong>원본 얼굴 사진 포함</strong>
+            <span className="block text-xs text-[var(--color-secondary)] mt-0.5">
+              체크하지 않으면 얼굴형 도식만 들어갑니다. SNS에 한 번 올라간 얼굴
+              사진은 회수가 어려우니 신중히 결정해 주세요.
+            </span>
+          </span>
+        </label>
+
         <button
           type="button"
           onClick={handleShare}
@@ -435,7 +458,11 @@ export default function ResultScreen({
           className="w-full sm:w-auto px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity disabled:opacity-60"
           style={{ backgroundColor: 'var(--color-accent)' }}
         >
-          {sharing ? '이미지 생성 중…' : '이미지 저장 / 공유'}
+          {sharing
+            ? '이미지 생성 중…'
+            : includePhoto
+              ? '얼굴 포함해서 공유'
+              : '얼굴형 도식만 공유'}
         </button>
         {shareNotice && (
           <p
