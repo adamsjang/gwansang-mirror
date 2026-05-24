@@ -14,6 +14,7 @@ import {
 } from '../data/interpretations'
 import type { ZoneMeasurement, AdvancedMeasurement } from '../lib/measurements'
 import { track } from '../lib/analytics'
+import { buildShareImage, shareOrDownload } from '../lib/share-image'
 
 interface Props {
   faceShape: FaceShape
@@ -237,6 +238,34 @@ export default function ResultScreen({
 }: Props) {
   const measureByZone = new Map(measurements.map((m) => [m.zoneId, m]))
   const derived = deriveArchetype(measurements)
+  const [sharing, setSharing] = useState(false)
+  const [shareNotice, setShareNotice] = useState<string>('')
+
+  async function handleShare() {
+    if (sharing) return
+    setSharing(true)
+    setShareNotice('')
+    track('share_clicked', { archetype: derived.archetype })
+    try {
+      const blob = await buildShareImage({
+        captureDataUrl,
+        faceShape,
+        measurements,
+        advanced,
+      })
+      const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+      const result = await shareOrDownload(blob, `gwansang-${stamp}.png`)
+      track('share_completed', { result, archetype: derived.archetype })
+      if (result === 'downloaded') setShareNotice('이미지를 저장했습니다.')
+      else if (result === 'cancelled') setShareNotice('공유가 취소되었습니다.')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      track('share_failed', { message: message.slice(0, 200) })
+      setShareNotice('이미지 생성에 실패했습니다.')
+    } finally {
+      setSharing(false)
+    }
+  }
 
   useEffect(() => {
     track('result_screen_viewed', {
@@ -386,6 +415,38 @@ export default function ResultScreen({
           </div>
         </section>
       )}
+
+      {/* 결과 이미지 공유 */}
+      <section
+        aria-label="결과 공유"
+        className="mb-8 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5"
+      >
+        <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-accent)] mb-2">
+          결과 공유
+        </p>
+        <p className="text-sm text-[var(--color-secondary)] leading-relaxed mb-3">
+          캡처 사진과 부위 분류 결과를 한 장의 이미지로 저장하거나 SNS·메신저로
+          공유할 수 있습니다. 이미지에 통합 해석 텍스트는 포함되지 않습니다.
+        </p>
+        <button
+          type="button"
+          onClick={handleShare}
+          disabled={sharing}
+          className="w-full sm:w-auto px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity disabled:opacity-60"
+          style={{ backgroundColor: 'var(--color-accent)' }}
+        >
+          {sharing ? '이미지 생성 중…' : '이미지 저장 / 공유'}
+        </button>
+        {shareNotice && (
+          <p
+            role="status"
+            aria-live="polite"
+            className="mt-2 text-xs text-[var(--color-secondary)]"
+          >
+            {shareNotice}
+          </p>
+        )}
+      </section>
 
       {/* Phase B1 — 통합 해석 잠금 + 관심 등록 */}
       <section
