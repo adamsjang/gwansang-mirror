@@ -90,12 +90,16 @@ export async function buildShareImage(args: BuildArgs): Promise<Blob> {
     ctx.drawImage(img, photoX, photoY, photoSize, photoH)
     ctx.restore()
   } else {
-    // 비식별 도식 — 얼굴형 외곽선 + 부위 점만
-    const placeholderH = 540
+    // 비식별 도식 — 얼굴형 외곽선 + 라벨 점 + 가운데 한자
+    const placeholderH = 600
     photoH = placeholderH
+
+    // 1) 부드러운 그라데이션 배경 카드
     ctx.save()
-    // 부드러운 배경 카드
-    ctx.fillStyle = 'rgba(139, 105, 20, 0.05)'
+    const grad = ctx.createLinearGradient(photoX, photoY, photoX, photoY + placeholderH)
+    grad.addColorStop(0, 'rgba(139, 105, 20, 0.08)')
+    grad.addColorStop(1, 'rgba(232, 221, 212, 0.5)')
+    ctx.fillStyle = grad
     ctx.beginPath()
     ctx.moveTo(photoX + r, photoY)
     ctx.arcTo(photoX + photoSize, photoY, photoX + photoSize, photoY + placeholderH, r)
@@ -106,54 +110,96 @@ export async function buildShareImage(args: BuildArgs): Promise<Blob> {
     ctx.fill()
     ctx.restore()
 
-    // 얼굴형별 도식 윤곽
     const centerX = SHARE_W / 2
     const centerY = photoY + placeholderH / 2
+
+    // 2) 가운데 큰 얼굴형 한자 (워터마크 톤)
+    ctx.save()
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const faceHanja: Record<string, string> = {
+      round: '圓',
+      oval: '卵',
+      long: '長',
+      square: '方',
+    }
+    ctx.fillStyle = 'rgba(139, 105, 20, 0.10)'
+    ctx.font = 'bold 320px "Noto Serif KR", serif'
+    ctx.fillText(faceHanja[args.faceShape.id] ?? '卵', centerX, centerY + 10)
+    ctx.restore()
+
+    // 3) 얼굴형 외곽선
     ctx.save()
     ctx.strokeStyle = '#8B6914'
     ctx.lineWidth = 4
     ctx.beginPath()
     if (args.faceShape.id === 'round') {
-      ctx.arc(centerX, centerY, 190, 0, Math.PI * 2)
+      ctx.arc(centerX, centerY, 200, 0, Math.PI * 2)
     } else if (args.faceShape.id === 'long') {
-      ctx.ellipse(centerX, centerY, 150, 230, 0, 0, Math.PI * 2)
+      ctx.ellipse(centerX, centerY, 160, 250, 0, 0, Math.PI * 2)
     } else if (args.faceShape.id === 'square') {
-      const half = 180
-      ctx.moveTo(centerX - half, centerY - half + 20)
-      ctx.lineTo(centerX + half, centerY - half + 20)
-      ctx.lineTo(centerX + half, centerY + half - 20)
-      ctx.lineTo(centerX - half, centerY + half - 20)
+      // 모서리가 살짝 둥근 사각형으로 자연스럽게
+      const half = 195
+      const rr = 30
+      const x0 = centerX - half
+      const x1 = centerX + half
+      const y0 = centerY - half + 20
+      const y1 = centerY + half - 20
+      ctx.moveTo(x0 + rr, y0)
+      ctx.arcTo(x1, y0, x1, y1, rr)
+      ctx.arcTo(x1, y1, x0, y1, rr)
+      ctx.arcTo(x0, y1, x0, y0, rr)
+      ctx.arcTo(x0, y0, x1, y0, rr)
       ctx.closePath()
     } else {
-      // oval (기본)
-      ctx.ellipse(centerX, centerY, 170, 220, 0, 0, Math.PI * 2)
+      ctx.ellipse(centerX, centerY, 185, 240, 0, 0, Math.PI * 2)
     }
     ctx.stroke()
     ctx.restore()
 
-    // 부위 위치 점 (도식적 표시 — 실제 좌표 아님)
-    ctx.fillStyle = 'rgba(139, 105, 20, 0.85)'
-    const dotR = 6
-    const points: { x: number; y: number }[] = [
-      { x: centerX, y: centerY - 140 }, // 이마
-      { x: centerX - 60, y: centerY - 80 }, // 왼 눈썹
-      { x: centerX + 60, y: centerY - 80 }, // 오른 눈썹
-      { x: centerX - 60, y: centerY - 50 }, // 왼 눈
-      { x: centerX + 60, y: centerY - 50 }, // 오른 눈
-      { x: centerX - 110, y: centerY - 10 }, // 왼 광대
-      { x: centerX + 110, y: centerY - 10 }, // 오른 광대
-      { x: centerX, y: centerY + 20 }, // 코
-      { x: centerX, y: centerY + 70 }, // 인중
-      { x: centerX, y: centerY + 100 }, // 입
-      { x: centerX, y: centerY + 170 }, // 턱
+    // 4) 부위 점 + 라벨 (도식 좌표 — 실제 landmark 아님)
+    type LabelPoint = { x: number; y: number; label: string; align: 'left' | 'right' | 'center' }
+    const labelPoints: LabelPoint[] = [
+      { x: centerX, y: centerY - 160, label: '이마', align: 'center' },
+      { x: centerX - 60, y: centerY - 95, label: '눈썹', align: 'right' },
+      { x: centerX - 60, y: centerY - 55, label: '눈', align: 'right' },
+      { x: centerX + 60, y: centerY - 55, label: '', align: 'left' }, // 오른 눈 — 라벨은 왼쪽만
+      { x: centerX - 120, y: centerY + 5, label: '광대', align: 'right' },
+      { x: centerX + 120, y: centerY + 5, label: '', align: 'left' }, // 오른 광대
+      { x: centerX, y: centerY + 30, label: '코', align: 'left' },
+      { x: centerX, y: centerY + 80, label: '인중', align: 'left' },
+      { x: centerX, y: centerY + 115, label: '입', align: 'left' },
+      { x: centerX, y: centerY + 195, label: '턱', align: 'center' },
     ]
-    for (const p of points) {
+
+    ctx.fillStyle = 'rgba(139, 105, 20, 0.95)'
+    for (const p of labelPoints) {
       ctx.beginPath()
-      ctx.arc(p.x, p.y, dotR, 0, Math.PI * 2)
+      ctx.arc(p.x, p.y, 7, 0, Math.PI * 2)
       ctx.fill()
     }
 
-    // 비식별 표시 라벨
+    // 라벨 텍스트
+    ctx.font = '500 20px "Noto Sans KR", sans-serif'
+    ctx.fillStyle = '#2C1810'
+    ctx.textBaseline = 'middle'
+    for (const p of labelPoints) {
+      if (!p.label) continue
+      const offset = 16
+      if (p.align === 'right') {
+        ctx.textAlign = 'right'
+        ctx.fillText(p.label, p.x - offset, p.y)
+      } else if (p.align === 'left') {
+        ctx.textAlign = 'left'
+        ctx.fillText(p.label, p.x + offset, p.y)
+      } else {
+        ctx.textAlign = 'center'
+        ctx.fillText(p.label, p.x, p.y - 18)
+      }
+    }
+
+    // 5) 비식별 표시 라벨 (카드 하단)
+    ctx.textBaseline = 'alphabetic'
     ctx.fillStyle = '#6B5744'
     ctx.font = '20px "Noto Sans KR", sans-serif'
     ctx.textAlign = 'center'
@@ -174,8 +220,8 @@ export async function buildShareImage(args: BuildArgs): Promise<Blob> {
 
   // 측정 라인들 — 부위 + 분류 라벨만 (수치 X로 압축, 단정 톤 회피)
   ctx.textAlign = 'left'
-  ctx.font = '22px "Noto Sans KR", sans-serif'
-  const lineHeight = 36
+  ctx.font = '20px "Noto Sans KR", sans-serif'
+  const lineHeight = 30
   const leftCol = 70
   const rightCol = SHARE_W - 70
 
