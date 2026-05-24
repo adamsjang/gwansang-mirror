@@ -250,6 +250,33 @@ export default function ResultScreen({
   const imgRef = useRef<HTMLImageElement | null>(null)
   const overlayRef = useRef<HTMLCanvasElement | null>(null)
 
+  // 도식 미리보기 — 공유 PNG(얼굴 미포함)와 동일한 합성 결과를 화면에도 표시
+  const [schematicUrl, setSchematicUrl] = useState<string>('')
+  useEffect(() => {
+    let cancelled = false
+    let createdUrl = ''
+    ;(async () => {
+      try {
+        const blob = await buildShareImage({
+          captureDataUrl,
+          faceShape,
+          measurements,
+          advanced,
+          includePhoto: false,
+        })
+        if (cancelled) return
+        createdUrl = URL.createObjectURL(blob)
+        setSchematicUrl(createdUrl)
+      } catch {
+        /* 미리보기 실패는 무시 — 공유 버튼은 별도 동작 */
+      }
+    })()
+    return () => {
+      cancelled = true
+      if (createdUrl) URL.revokeObjectURL(createdUrl)
+    }
+  }, [captureDataUrl, faceShape, measurements, advanced])
+
   useEffect(() => {
     const canvas = overlayRef.current
     const img = imgRef.current
@@ -339,27 +366,45 @@ export default function ResultScreen({
       </p>
 
       {captureDataUrl && (
-        <figure className="mb-8 rounded-xl overflow-hidden border border-[var(--color-border)] bg-black">
-          <div className="relative">
-            <img
-              ref={imgRef}
-              src={captureDataUrl}
-              alt="분석에 사용된 사진 — 부위 강조 점 표시"
-              onLoad={() => setHoverZone((z) => z)} // 트리거 redraw
-              className="w-full h-auto block"
-            />
-            <canvas
-              ref={overlayRef}
-              aria-hidden="true"
-              className="absolute inset-0 w-full h-full pointer-events-none"
-            />
-          </div>
-          <figcaption className="px-4 py-2 text-xs text-[var(--color-secondary)] bg-[var(--color-surface)]">
-            노란 점 = 측정에 사용된 얼굴 부위 좌표. 아래 부위 카드에 마우스를 올리면
-            (모바일은 카드를 누르면) 해당 부위가 빨간 점으로 강조됩니다. 이미지는 브라우저
-            내 처리, 저장되지 않습니다.
-          </figcaption>
-        </figure>
+        <div className="grid gap-4 md:grid-cols-2 mb-8">
+          <figure className="rounded-xl overflow-hidden border border-[var(--color-border)] bg-black">
+            <div className="relative">
+              <img
+                ref={imgRef}
+                src={captureDataUrl}
+                alt="분석에 사용된 사진 — 부위 강조 점 표시"
+                onLoad={() => setHoverZone((z) => z)}
+                className="w-full h-auto block"
+              />
+              <canvas
+                ref={overlayRef}
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full pointer-events-none"
+              />
+            </div>
+            <figcaption className="px-4 py-2 text-xs text-[var(--color-secondary)] bg-[var(--color-surface)]">
+              내 캡처 사진. 부위 카드에 마우스(또는 탭)하면 빨간 점으로 강조됩니다. 브라우저
+              내에서만 처리되어 저장되지 않습니다.
+            </figcaption>
+          </figure>
+          <figure className="rounded-xl overflow-hidden border border-[var(--color-border)] bg-[var(--color-base)]">
+            {schematicUrl ? (
+              <img
+                src={schematicUrl}
+                alt="공유 이미지(얼굴 사진 미포함) 미리보기"
+                className="w-full h-auto block"
+              />
+            ) : (
+              <div className="aspect-[4/5] flex items-center justify-center text-xs text-[var(--color-secondary)]">
+                도식 생성 중…
+              </div>
+            )}
+            <figcaption className="px-4 py-2 text-xs text-[var(--color-secondary)] bg-[var(--color-surface)]">
+              공유 이미지(얼굴 사진 미포함) 미리보기. 아래 "결과 공유"에서 이 이미지를
+              저장하거나 SNS로 보낼 수 있습니다.
+            </figcaption>
+          </figure>
+        </div>
       )}
 
       <section className="mb-8 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">

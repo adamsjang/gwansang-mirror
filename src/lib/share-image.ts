@@ -128,24 +128,33 @@ export async function buildShareImage(args: BuildArgs): Promise<Blob> {
     ctx.fillText(faceHanja[args.faceShape.id] ?? '卵', centerX, centerY + 10)
     ctx.restore()
 
-    // 3) 얼굴형 외곽선 — 광대→턱이 자연스럽게 좁아지는 인간 얼굴 곡선 (Bezier)
-    // 얼굴형별 width 파라미터로 차이를 표현 (topWidth: 이마, cheekWidth: 광대,
-    // jawWidth: 턱 옆, chinWidth: 턱 중앙).
+    // 3) 얼굴형 외곽선 — 사람 두상 형태
+    //    정수리는 평평, 관자놀이는 거의 수직, 광대가 가장 넓고, 턱 모서리에서
+    //    명확한 변곡점, 턱끝은 부드럽게 마감.
+    //    얼굴형별로 head/temple/cheek/jaw/chin 폭과 height를 다르게 잡는다.
     const faceParams: Record<
       string,
-      { topW: number; cheekW: number; jawW: number; chinW: number; height: number }
+      {
+        headW: number   // 정수리 폭
+        templeW: number // 관자놀이 폭
+        cheekW: number  // 광대 폭 (최대)
+        jawW: number    // 턱 모서리 폭
+        chinW: number   // 턱끝 폭 (중심에서)
+        height: number  // 정수리 ~ 턱끝
+      }
     > = {
-      round: { topW: 150, cheekW: 200, jawW: 160, chinW: 70, height: 420 },
-      oval: { topW: 130, cheekW: 180, jawW: 130, chinW: 50, height: 460 },
-      long: { topW: 110, cheekW: 160, jawW: 110, chinW: 45, height: 500 },
-      square: { topW: 170, cheekW: 195, jawW: 180, chinW: 90, height: 420 },
+      round: { headW: 150, templeW: 175, cheekW: 200, jawW: 170, chinW: 90, height: 440 },
+      oval: { headW: 130, templeW: 160, cheekW: 185, jawW: 135, chinW: 60, height: 470 },
+      long: { headW: 115, templeW: 140, cheekW: 165, jawW: 115, chinW: 55, height: 510 },
+      square: { headW: 175, templeW: 195, cheekW: 200, jawW: 190, chinW: 110, height: 430 },
     }
     const fp = faceParams[args.faceShape.id] ?? faceParams.oval
 
-    const yTop = centerY - fp.height / 2 + 20 // 이마 위
+    const yTop = centerY - fp.height / 2 // 정수리
+    const yTemple = centerY - fp.height * 0.32 // 관자놀이
+    const yCheek = centerY + 10 // 광대 (가장 넓음)
+    const yJawCorner = centerY + fp.height * 0.27 // 턱 모서리
     const yBottom = centerY + fp.height / 2 // 턱끝
-    const yCheek = centerY + 10 // 광대 높이 (가장 넓음)
-    const yJawCorner = centerY + fp.height / 2 - 90 // 턱 모서리
 
     ctx.save()
     ctx.strokeStyle = '#8B6914'
@@ -154,30 +163,54 @@ export async function buildShareImage(args: BuildArgs): Promise<Blob> {
     ctx.lineCap = 'round'
     ctx.beginPath()
     ctx.moveTo(centerX, yTop)
-    // 오른쪽: 이마 → 광대
+    // 오른쪽: 정수리 평평 → 관자놀이
     ctx.bezierCurveTo(
-      centerX + fp.topW * 1.05, yTop + 10,
-      centerX + fp.cheekW, yCheek - 90,
+      centerX + fp.headW * 0.6, yTop,
+      centerX + fp.templeW, yTop + 20,
+      centerX + fp.templeW, yTemple
+    )
+    // 관자놀이 → 광대 (살짝 부풀면서 내려옴)
+    ctx.bezierCurveTo(
+      centerX + fp.templeW, yTemple + 40,
+      centerX + fp.cheekW, yCheek - 20,
       centerX + fp.cheekW, yCheek
     )
-    // 광대 → 턱 모서리
+    // 광대 → 턱 모서리 (수직에 가까운 직선 느낌 + square는 더 곧게)
     ctx.bezierCurveTo(
-      centerX + fp.cheekW, yJawCorner - 30,
-      centerX + fp.jawW, yJawCorner + 10,
-      centerX + fp.chinW, yBottom - 20
+      centerX + fp.cheekW, yCheek + 50,
+      centerX + fp.jawW * 1.02, yJawCorner - 10,
+      centerX + fp.jawW, yJawCorner + 10
     )
-    // 턱 중앙 (둥근 마감)
-    ctx.quadraticCurveTo(centerX, yBottom + 8, centerX - fp.chinW, yBottom - 20)
-    // 왼쪽 (대칭): 턱 모서리 → 광대
+    // 턱 모서리 → 턱끝 (사선)
     ctx.bezierCurveTo(
-      centerX - fp.jawW, yJawCorner + 10,
-      centerX - fp.cheekW, yJawCorner - 30,
+      centerX + fp.jawW * 0.85, yJawCorner + 60,
+      centerX + fp.chinW * 1.4, yBottom - 20,
+      centerX + fp.chinW, yBottom - 5
+    )
+    // 턱끝 (부드러운 마감)
+    ctx.quadraticCurveTo(centerX, yBottom + 10, centerX - fp.chinW, yBottom - 5)
+    // 왼쪽 (대칭): 턱끝 → 턱 모서리
+    ctx.bezierCurveTo(
+      centerX - fp.chinW * 1.4, yBottom - 20,
+      centerX - fp.jawW * 0.85, yJawCorner + 60,
+      centerX - fp.jawW, yJawCorner + 10
+    )
+    // 턱 모서리 → 광대
+    ctx.bezierCurveTo(
+      centerX - fp.jawW * 1.02, yJawCorner - 10,
+      centerX - fp.cheekW, yCheek + 50,
       centerX - fp.cheekW, yCheek
     )
-    // 광대 → 이마
+    // 광대 → 관자놀이
     ctx.bezierCurveTo(
-      centerX - fp.cheekW, yCheek - 90,
-      centerX - fp.topW * 1.05, yTop + 10,
+      centerX - fp.cheekW, yCheek - 20,
+      centerX - fp.templeW, yTemple + 40,
+      centerX - fp.templeW, yTemple
+    )
+    // 관자놀이 → 정수리
+    ctx.bezierCurveTo(
+      centerX - fp.templeW, yTop + 20,
+      centerX - fp.headW * 0.6, yTop,
       centerX, yTop
     )
     ctx.closePath()
@@ -265,33 +298,77 @@ export async function buildShareImage(args: BuildArgs): Promise<Blob> {
 
     ctx.restore()
 
-    // 5) 부위명 라벨 — 얼굴 외곽 바깥쪽에 배치 (외곽선/feature와 겹치지 않게)
-    type LabelPoint = { x: number; y: number; label: string; align: 'left' | 'right' | 'center' }
+    // 5) 부위명 라벨 + 점 + 리더 라인
+    //    feature 자체는 시각 anchor 역할, 점은 라벨이 어디를 가리키는지 확정.
+    type LabelPoint = {
+      label: string
+      align: 'left' | 'right' | 'center'
+      labelX: number
+      labelY: number
+      dotX: number // 얼굴 위 부위 점 위치 (feature와 일치)
+      dotY: number
+    }
+    const ledLeft = centerX - fp.cheekW - 15
+    const ledRight = centerX + fp.cheekW + 15
     const labelPoints: LabelPoint[] = [
-      { x: centerX, y: yTop - 24, label: '이마', align: 'center' },
-      { x: centerX - fp.cheekW - 15, y: browY, label: '눈썹', align: 'right' },
-      { x: centerX - fp.cheekW - 15, y: eyeY, label: '눈', align: 'right' },
-      { x: centerX - fp.cheekW - 15, y: cheekY, label: '광대', align: 'right' },
-      { x: centerX + fp.cheekW + 15, y: centerY + 12, label: '코', align: 'left' },
-      { x: centerX + fp.cheekW + 15, y: centerY + 80, label: '인중', align: 'left' },
-      { x: centerX + fp.cheekW + 15, y: mouthY + 6, label: '입', align: 'left' },
-      { x: centerX, y: yBottom + 28, label: '턱', align: 'center' },
+      // 이마: feature 위 (정수리와 눈썹 사이)
+      { label: '이마', align: 'center', labelX: centerX, labelY: yTop - 24, dotX: centerX, dotY: centerY - 140 },
+      // 눈썹: 왼 눈썹 가운데 anchor
+      { label: '눈썹', align: 'right', labelX: ledLeft, labelY: browY, dotX: centerX - 60, dotY: browY - 4 },
+      // 눈: 왼 눈 중심
+      { label: '눈', align: 'right', labelX: ledLeft, labelY: eyeY, dotX: centerX - 62, dotY: eyeY },
+      // 광대: 왼 광대 호 위치
+      { label: '광대', align: 'right', labelX: ledLeft, labelY: cheekY, dotX: centerX - 128, dotY: cheekY },
+      // 코: 콧날 중간
+      { label: '코', align: 'left', labelX: ledRight, labelY: centerY + 12, dotX: centerX, dotY: centerY + 18 },
+      // 인중: 코밑 ~ 입 사이
+      { label: '인중', align: 'left', labelX: ledRight, labelY: centerY + 82, dotX: centerX, dotY: centerY + 84 },
+      // 입: 입 중심
+      { label: '입', align: 'left', labelX: ledRight, labelY: mouthY + 6, dotX: centerX, dotY: mouthY + 4 },
+      // 턱: 턱끝 약간 위
+      { label: '턱', align: 'center', labelX: centerX, labelY: yBottom + 28, dotX: centerX, dotY: yBottom - 10 },
     ]
 
+    // 점 — 얼굴 위 anchor
+    ctx.save()
+    ctx.fillStyle = 'rgba(192, 57, 43, 0.9)'
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
+    ctx.lineWidth = 2
+    for (const p of labelPoints) {
+      ctx.beginPath()
+      ctx.arc(p.dotX, p.dotY, 6, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+    }
+    ctx.restore()
+
+    // 리더 라인 (점 → 라벨) — 측면 라벨에만 (위/아래는 라벨이 점 바로 위·아래라 불필요)
+    ctx.save()
+    ctx.strokeStyle = 'rgba(139, 105, 20, 0.45)'
+    ctx.lineWidth = 1.5
+    for (const p of labelPoints) {
+      if (p.align === 'center') continue
+      ctx.beginPath()
+      ctx.moveTo(p.dotX, p.dotY)
+      ctx.lineTo(p.labelX + (p.align === 'right' ? 8 : -8), p.labelY)
+      ctx.stroke()
+    }
+    ctx.restore()
+
+    // 라벨 텍스트
     ctx.font = '500 20px "Noto Sans KR", sans-serif'
     ctx.fillStyle = '#2C1810'
     ctx.textBaseline = 'middle'
     for (const p of labelPoints) {
-      if (!p.label) continue
       if (p.align === 'right') {
         ctx.textAlign = 'right'
-        ctx.fillText(p.label, p.x, p.y)
+        ctx.fillText(p.label, p.labelX, p.labelY)
       } else if (p.align === 'left') {
         ctx.textAlign = 'left'
-        ctx.fillText(p.label, p.x, p.y)
+        ctx.fillText(p.label, p.labelX, p.labelY)
       } else {
         ctx.textAlign = 'center'
-        ctx.fillText(p.label, p.x, p.y)
+        ctx.fillText(p.label, p.labelX, p.labelY)
       }
     }
 
