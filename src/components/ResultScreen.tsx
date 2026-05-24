@@ -74,34 +74,93 @@ function InterestForm() {
   )
 }
 
+/**
+ * 부위별 전통 관상의 발현 시기 — 통변 미리보기에 시간성을 부여하기 위함.
+ * (관상학 통설; 단정 아닌 참고 기준)
+ */
+const ZONE_PERIOD: Record<string, string> = {
+  forehead: '초년',
+  eyebrow: '30대 초',
+  eyes: '30~40대',
+  cheekbone: '40대',
+  nose: '중년',
+  philtrum: '50대',
+  mouth: '50대 후',
+  jaw: '말년',
+}
+
+const ZONE_SHORT_NAME: Record<string, string> = {
+  forehead: '이마',
+  eyebrow: '눈썹 간격',
+  eyes: '눈',
+  cheekbone: '광대',
+  nose: '코',
+  philtrum: '인중',
+  mouth: '입',
+  jaw: '턱',
+}
+
+function zoneTag(zoneId: string): string {
+  const name = ZONE_SHORT_NAME[zoneId] ?? zoneId
+  const period = ZONE_PERIOD[zoneId]
+  return period ? `${name}(${period})` : name
+}
+
+function levelTone(level: 'low' | 'mid' | 'high'): string {
+  if (level === 'low') return '평균보다 조용한 편'
+  if (level === 'high') return '평균보다 두드러진 편'
+  return '평균'
+}
+
 function CombinatorialPreview({ measurements }: { measurements: ZoneMeasurement[] }) {
-  // 하이라이트 2개 부위만 골라 미리보기 한 줄 — 자세한 해석은 잠금
-  const named: Record<string, string> = {
-    forehead: '이마',
-    eyebrow: '눈썹 간격',
-    eyes: '눈',
-    nose: '코',
-    cheekbone: '광대',
-    philtrum: '인중',
-    mouth: '입',
-    jaw: '턱',
+  // 평균에서 벗어난 부위를 강한 순으로 정렬 — 단일 강조 / 같은 방향 누적 / 양방향 어긋남
+  // 세 가지 패턴으로 미리보기 한 줄을 다르게 짠다.
+  const offMid = measurements
+    .filter((m) => m.level !== 'mid')
+    .sort((a, b) => Math.abs(b.ratio - 0.5) - Math.abs(a.ratio - 0.5))
+
+  if (offMid.length === 0) {
+    return (
+      <p className="text-sm text-[var(--color-secondary)] leading-relaxed">
+        모든 부위가 평균 범위 안에 머무는 <strong className="text-[var(--color-primary)]">조화로운 균형형</strong>입니다.
+        전통 관상에서는 이런 균형이 오히려 드물게 다뤄지는데 — 한 사람의 삶 어디서 그 균형이
+        흔들리거나 깊어지는지를…
+      </p>
+    )
   }
-  const labelOf = (lv: 'low' | 'mid' | 'high', zone: string) => {
-    const z = named[zone] ?? zone
-    if (lv === 'mid') return `${z}은 평균`
-    return `${z}은 ${lv === 'low' ? '평균보다 작은/짧은 편' : '평균보다 큰/긴 편'}`
+
+  const a = offMid[0]
+  const b = offMid[1]
+
+  if (!b) {
+    return (
+      <p className="text-sm text-[var(--color-secondary)] leading-relaxed">
+        <strong className="text-[var(--color-primary)]">{zoneTag(a.zoneId)}</strong>만 평균에서 뚜렷이 벗어났고 나머지는 균형 —
+        한 부위가 혼자 자기 색을 강하게 드러내는 조합입니다. 전통 관상에서는 이런 단일 강조가
+        그 시기에 어떻게 발현되고, 다른 시기와는 어떻게 어긋나는지를…
+      </p>
+    )
   }
-  // 가장 평균에서 벗어난 두 측정값 선택
-  const sorted = [...measurements].sort(
-    (a, b) => Math.abs(b.ratio - 0.5) - Math.abs(a.ratio - 0.5)
-  )
-  const a = sorted[0]
-  const b = sorted[1]
-  if (!a || !b) return null
+
+  const sameDirection = a.level === b.level
+  if (sameDirection) {
+    return (
+      <p className="text-sm text-[var(--color-secondary)] leading-relaxed">
+        <strong className="text-[var(--color-primary)]">{zoneTag(a.zoneId)}</strong>와{' '}
+        <strong className="text-[var(--color-primary)]">{zoneTag(b.zoneId)}</strong>가 같은 방향으로 기운{' '}
+        <strong className="text-[var(--color-primary)]">누적형 조합</strong>입니다.
+        두 시기가 같은 흐름을 가리킬 때 전통 관상에서는 그 흐름이 한 사람의 삶에서 어떻게 두꺼워지고,
+        어디서 한계로 작용하는지를…
+      </p>
+    )
+  }
+
   return (
     <p className="text-sm text-[var(--color-secondary)] leading-relaxed">
-      당신의 경우 {labelOf(a.level, a.zoneId)}, {labelOf(b.level, b.zoneId)}로 측정됐습니다.
-      이 조합이 전통 관상에서 어떻게 통변(通變)되는지는…
+      <strong className="text-[var(--color-primary)]">{zoneTag(a.zoneId)}</strong>는 {levelTone(a.level)}인데{' '}
+      <strong className="text-[var(--color-primary)]">{zoneTag(b.zoneId)}</strong>는 {levelTone(b.level)} —
+      두 시기가 정반대 방향을 가리키는 <strong className="text-[var(--color-primary)]">어긋남 조합</strong>입니다.
+      통변(通變)은 바로 이런 어긋남이 인생 어디서 어떻게 풀려나가는지를 읽는 일인데요…
     </p>
   )
 }
