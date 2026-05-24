@@ -16,6 +16,30 @@ const WASM_BASE =
 const MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
 
+/** video.srcObject가 설정된 직후 metadata 로드까지 안전하게 기다리고 재생. */
+async function attachStreamAndPlay(video: HTMLVideoElement, stream: MediaStream): Promise<void> {
+  video.srcObject = stream
+  if (video.readyState < 1) {
+    await new Promise<void>((resolve, reject) => {
+      const onLoaded = () => {
+        cleanup()
+        resolve()
+      }
+      const onError = () => {
+        cleanup()
+        reject(new Error('video element error during metadata load'))
+      }
+      const cleanup = () => {
+        video.removeEventListener('loadedmetadata', onLoaded)
+        video.removeEventListener('error', onError)
+      }
+      video.addEventListener('loadedmetadata', onLoaded)
+      video.addEventListener('error', onError)
+    })
+  }
+  await video.play()
+}
+
 export default function App() {
   const [state, setState] = useState<AppState>({ kind: 'intro' })
   const [isModelLoading, setIsModelLoading] = useState(false)
@@ -27,25 +51,40 @@ export default function App() {
   const landmarkerRef = useRef<FaceLandmarker | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
-  // 컴포넌트 마운트 해제 시 리소스 정리
+  // 페이지 진입 시 모델 백그라운드 로드 — 사용자가 PIPA 고지 읽는 시간을 활용
   useEffect(() => {
+    ensureLandmarker().catch(() => {
+      /* 첫 실패는 무시, handleStart에서 다시 시도 */
+    })
     return () => {
       stopStream()
       landmarkerRef.current?.close()
       landmarkerRef.current = null
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function ensureLandmarker() {
+  async function ensureLandmarker(): Promise<FaceLandmarker> {
     if (landmarkerRef.current) return landmarkerRef.current
     setIsModelLoading(true)
     try {
       const fileset = await FilesetResolver.forVisionTasks(WASM_BASE)
-      const lm = await FaceLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
-        runningMode: 'IMAGE',
-        numFaces: 1,
-      })
+      // GPU delegate가 iOS Safari 등 일부 환경에서 거부되면 CPU로 폴백
+      let lm: FaceLandmarker
+      try {
+        lm = await FaceLandmarker.createFromOptions(fileset, {
+          baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
+          runningMode: 'IMAGE',
+          numFaces: 1,
+        })
+      } catch (gpuErr) {
+        console.warn('FaceLandmarker GPU delegate 실패, CPU로 폴백:', gpuErr)
+        lm = await FaceLandmarker.createFromOptions(fileset, {
+          baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
+          runningMode: 'IMAGE',
+          numFaces: 1,
+        })
+      }
       landmarkerRef.current = lm
       return lm
     } finally {
@@ -53,13 +92,15 @@ export default function App() {
     }
   }
 
-  async function startCameraStream() {
+  async function startCameraAndPlay() {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
       audio: false,
     })
     streamRef.current = stream
-    return stream
+    if (videoRef.current) {
+      await attachStreamAndPlay(videoRef.current, stream)
+    }
   }
 
   function stopStream() {
@@ -72,18 +113,12 @@ export default function App() {
     setErrorMsg('')
     try {
       await ensureLandmarker()
-      const stream = await startCameraStream()
+      await startCameraAndPlay()
       setState({ kind: 'camera' })
-      // video 엘리먼트는 다음 렌더에서 마운트되므로 약간 지연
-      requestAnimationFrame(() => {
-        if (videoRef.current && stream) {
-          videoRef.current.srcObject = stream
-          videoRef.current.play().catch(() => {})
-        }
-      })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       setErrorMsg(`초기화 실패: ${message}`)
+      stopStream()
       setState({ kind: 'intro' })
     }
   }
@@ -97,7 +132,6 @@ export default function App() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    // ZONES에 등록된 landmark만 강조
     const zonePoints = new Set<number>()
     for (const z of ZONES) for (const i of z.landmarkIndices) zonePoints.add(i)
     ctx.fillStyle = 'rgba(139, 105, 20, 0.85)'
@@ -111,11 +145,19 @@ export default function App() {
   }
 
   async function handleAnalyze() {
-    if (!videoRef.current || !landmarkerRef.current) return
+    const v = videoRef.current
+    if (!v || !landmarkerRef.current) return
+
+    // metadata 안 도달했거나 0×0이면 detect가 ROI 에러 — 사전 가드
+    if (v.videoWidth === 0 || v.videoHeight === 0 || v.readyState < 2) {
+      setErrorMsg('비디오가 아직 준비되지 않았습니다. 1~2초 후 다시 시도하세요.')
+      return
+    }
+
     setIsAnalyzing(true)
     setErrorMsg('')
     try {
-      const result = landmarkerRef.current.detect(videoRef.current)
+      const result = landmarkerRef.current.detect(v)
       const landmarks = result.faceLandmarks[0]
       if (!landmarks || landmarks.length === 0) {
         setErrorMsg(
@@ -143,17 +185,12 @@ export default function App() {
   async function handleRetake() {
     setErrorMsg('')
     try {
-      const stream = await startCameraStream()
+      await startCameraAndPlay()
       setState({ kind: 'camera' })
-      requestAnimationFrame(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          videoRef.current.play().catch(() => {})
-        }
-      })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       setErrorMsg(`카메라 시작 실패: ${message}`)
+      stopStream()
       setState({ kind: 'intro' })
     }
   }
@@ -163,40 +200,40 @@ export default function App() {
     setState({ kind: 'intro' })
   }
 
-  if (state.kind === 'intro') {
-    return (
-      <>
-        {errorMsg && (
-          <p
-            role="alert"
-            className="max-w-2xl mx-auto mt-6 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
-          >
-            {errorMsg}
-          </p>
-        )}
-        <IntroScreen onStart={handleStart} isLoading={isModelLoading} />
-      </>
-    )
-  }
-
-  if (state.kind === 'camera') {
-    return (
+  return (
+    <>
+      {/* CameraScreen은 항상 마운트 — iOS Safari가 user gesture 시점에 video element를 DOM에서 찾아야 play()를 허용 */}
       <CameraScreen
         videoRef={videoRef}
         canvasRef={canvasRef}
         onAnalyze={handleAnalyze}
         onCancel={handleCancel}
         isAnalyzing={isAnalyzing}
-        errorMsg={errorMsg}
+        errorMsg={errorMsg && state.kind === 'camera' ? errorMsg : undefined}
+        visible={state.kind === 'camera'}
       />
-    )
-  }
 
-  return (
-    <ResultScreen
-      faceShape={state.faceShape ?? FACE_SHAPES.oval}
-      onRetake={handleRetake}
-      onExit={handleExit}
-    />
+      {state.kind === 'intro' && (
+        <>
+          {errorMsg && (
+            <p
+              role="alert"
+              className="max-w-2xl mx-auto mt-6 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+            >
+              {errorMsg}
+            </p>
+          )}
+          <IntroScreen onStart={handleStart} isLoading={isModelLoading} />
+        </>
+      )}
+
+      {state.kind === 'result' && (
+        <ResultScreen
+          faceShape={state.faceShape ?? FACE_SHAPES.oval}
+          onRetake={handleRetake}
+          onExit={handleExit}
+        />
+      )}
+    </>
   )
 }

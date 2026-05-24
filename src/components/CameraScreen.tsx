@@ -7,6 +7,7 @@ interface Props {
   onCancel: () => void
   isAnalyzing: boolean
   errorMsg?: string
+  visible: boolean
 }
 
 export default function CameraScreen({
@@ -16,9 +17,16 @@ export default function CameraScreen({
   onCancel,
   isAnalyzing,
   errorMsg,
+  visible,
 }: Props) {
+  // visible=false일 때는 화면 밖으로 보내되 video element는 항상 마운트 유지.
+  // iOS Safari는 user gesture 시점에 video element가 DOM에 있어야 play()를 허용.
+  const offscreenStyle = visible
+    ? undefined
+    : ({ position: 'absolute', left: -99999, top: 0, opacity: 0, pointerEvents: 'none' } as const)
+
   return (
-    <div className="max-w-2xl mx-auto px-4 py-10">
+    <div className="max-w-2xl mx-auto px-4 py-10" style={offscreenStyle} aria-hidden={!visible}>
       <p className="text-xs font-semibold uppercase tracking-widest mb-2 text-[var(--color-accent)]">
         2단계 · 촬영
       </p>
@@ -39,14 +47,12 @@ export default function CameraScreen({
         </p>
       )}
 
-      <div
-        className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border border-[var(--color-border)] bg-black"
-      >
+      <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden border border-[var(--color-border)] bg-black">
         <video
           ref={videoRef}
           playsInline
+          webkit-playsinline=""
           muted
-          autoPlay
           className="absolute inset-0 w-full h-full object-cover"
           style={{ transform: 'scaleX(-1)' }}
         />
