@@ -16,7 +16,6 @@ import {
 import type { ZoneMeasurement, AdvancedMeasurement } from '../lib/measurements'
 import { track } from '../lib/analytics'
 import { buildShareImage, shareOrDownload, SCHEMATIC_DOT_PCT } from '../lib/share-image'
-import SideCapture from './SideCapture'
 
 interface Props {
   faceShape: FaceShape
@@ -245,8 +244,6 @@ export default function ResultScreen({
   const [sharing, setSharing] = useState(false)
   const [shareNotice, setShareNotice] = useState<string>('')
   const [includePhoto, setIncludePhoto] = useState(false)
-  const [sideCaptureUrl, setSideCaptureUrl] = useState<string>('')
-  const [sideOpen, setSideOpen] = useState(false)
 
   // hover/tap 시 캡처 이미지 위에 해당 zone landmark 강조
   const [hoverZone, setHoverZone] = useState<string | null>(null)
@@ -491,30 +488,6 @@ export default function ResultScreen({
                   </p>
                 )}
 
-                {z.id === 'ear' && (
-                  <div className="mb-3">
-                    {sideCaptureUrl ? (
-                      <div className="rounded-lg overflow-hidden border border-[var(--color-border)] bg-black">
-                        <img
-                          src={sideCaptureUrl}
-                          alt="측면 촬영 사진"
-                          className="w-full h-auto block"
-                        />
-                      </div>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        track('side_capture_opened')
-                        setSideOpen(true)
-                      }}
-                      className="mt-2 w-full sm:w-auto px-3 py-1.5 rounded-lg border border-dashed border-[var(--color-accent)] text-xs font-semibold text-[var(--color-accent)] hover:bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] transition-colors"
-                    >
-                      {sideCaptureUrl ? '측면 다시 촬영' : '+ 귀 측면 추가 촬영'}
-                    </button>
-                  </div>
-                )}
-
                 <a
                   href={`${KAG_BASE_URL}/${z.kagSlug}`}
                   target="_blank"
@@ -688,19 +661,6 @@ export default function ResultScreen({
         처리되어 외부로 전송되지 않았습니다.
       </p>
 
-      {sideOpen && (
-        <SideCapture
-          onCapture={(url) => {
-            setSideCaptureUrl(url)
-            setSideOpen(false)
-            track('side_capture_completed')
-          }}
-          onCancel={() => {
-            setSideOpen(false)
-            track('side_capture_cancelled')
-          }}
-        />
-      )}
     </div>
   )
 }
