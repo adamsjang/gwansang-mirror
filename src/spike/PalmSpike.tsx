@@ -208,7 +208,6 @@ export default function PalmSpike() {
         <video
           ref={videoRef}
           playsInline
-          // @ts-expect-error legacy iOS attribute
           webkit-playsinline=""
           muted
           style={{ width: '100%', height: 'auto', display: 'block', transform: 'scaleX(-1)' }}
