@@ -416,8 +416,8 @@ export async function buildShareImage(args: BuildArgs): Promise<Blob> {
 
   // 측정 라인들 — 부위 + 분류 라벨만 (수치 X로 압축, 단정 톤 회피)
   ctx.textAlign = 'left'
-  ctx.font = '20px "Noto Sans KR", sans-serif'
-  const lineHeight = 30
+  ctx.font = '18px "Noto Sans KR", sans-serif'
+  const lineHeight = 26
   const leftCol = 70
   const rightCol = SHARE_W - 70
 

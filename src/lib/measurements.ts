@@ -217,9 +217,15 @@ export function computeMeasurements(landmarks: NormalizedLandmark[]): ZoneMeasur
  * ========================================================================== */
 
 export interface AdvancedMeasurement {
-  id: 'eye_tilt' | 'mouth_corner' | 'eyebrow_arch'
+  id:
+    | 'eye_tilt'
+    | 'mouth_corner'
+    | 'eyebrow_arch'
+    | 'brow_thickness'
+    | 'nose_width'
+    | 'lip_thickness'
   name: string
-  ratio: number // 부호 있음. 음수 = low 방향, 양수 = high 방향
+  ratio: number // 부호 있음 또는 0~1. 음수 = low 방향, 양수 = high 방향
   level: 'low' | 'mid' | 'high'
   /** 사용자에게 보일 분류 라벨 (예: "올라간 편") */
   levelLabel: string
@@ -251,6 +257,24 @@ const ADV_THRESHOLDS: Record<AdvancedMeasurement['id'], AdvancedThreshold> = {
     labels: { low: '평행에 가까운 편', mid: '완만한 아치', high: '뚜렷한 아치' },
     name: '눈썹 아치',
   },
+  brow_thickness: {
+    low: 0.018,
+    high: 0.028,
+    labels: { low: '얇은 편', mid: '평균', high: '두꺼운 편' },
+    name: '눈썹 두께',
+  },
+  nose_width: {
+    low: 0.22,
+    high: 0.28,
+    labels: { low: '좁은 편', mid: '평균', high: '넓은 편' },
+    name: '코 너비',
+  },
+  lip_thickness: {
+    low: 0.06,
+    high: 0.1,
+    labels: { low: '얇은 편', mid: '평균', high: '두꺼운 편' },
+    name: '입술 두께',
+  },
 }
 
 function classifyAdv(ratio: number, t: AdvancedThreshold): 'low' | 'mid' | 'high' {
@@ -281,11 +305,24 @@ function makeAdv(id: AdvancedMeasurement['id'], ratio: number): AdvancedMeasurem
  *      양수 = 입꼬리가 중심보다 아래 = 처짐
  *  - eyebrow_arch: (눈썹 양 끝 평균.y − 눈썹 가운데.y) / 눈썹 폭. 좌·우 평균.
  *      양수 = 가운데가 위 = 아치형
+ *  - brow_thickness: (눈썹 아래 가장자리.y − 윗 가장자리.y) / 얼굴 폭.
+ *      좌·우 평균. 양수만 (두께).
+ *  - nose_width: 콧방울 양 끝 거리 / 얼굴 폭.
+ *  - lip_thickness: (입술 아래 가장자리.y − 윗 가장자리.y) / 얼굴 높이.
+ *      윗입술+아랫입술 전체 높이.
  */
 export function computeAdvancedMeasurements(
   landmarks: NormalizedLandmark[]
 ): AdvancedMeasurement[] {
   const out: AdvancedMeasurement[] = []
+
+  // 얼굴 폭·높이 (face shape 분류와 동일 기준)
+  const top = landmarks[10]
+  const chin = landmarks[152]
+  const left = landmarks[234]
+  const right = landmarks[454]
+  const faceHeight = top && chin ? dist(top, chin) : 0
+  const faceWidth = left && right ? dist(left, right) : 0
 
   // eye_tilt
   const eyeLOut = landmarks[33]
@@ -330,6 +367,34 @@ export function computeAdvancedMeasurements(
     const archL = wL > 0 ? ((browLOut.y + browLIn.y) / 2 - browLMid.y) / wL : 0
     const archR = wR > 0 ? ((browROut.y + browRIn.y) / 2 - browRMid.y) / wR : 0
     out.push(makeAdv('eyebrow_arch', (archL + archR) / 2))
+  }
+
+  // brow_thickness — 눈썹 윗 가장자리 vs 아래 가장자리 y 차이
+  // 왼쪽 윗 가장자리 105 (위), 아래 가장자리 52
+  // 오른쪽 윗 334, 아래 282
+  const browLTop = landmarks[105]
+  const browLBot = landmarks[52]
+  const browRTop = landmarks[334]
+  const browRBot = landmarks[282]
+  if (faceWidth > 0 && browLTop && browLBot && browRTop && browRBot) {
+    const thickL = Math.abs(browLBot.y - browLTop.y)
+    const thickR = Math.abs(browRBot.y - browRTop.y)
+    out.push(makeAdv('brow_thickness', ((thickL + thickR) / 2) / faceWidth))
+  }
+
+  // nose_width — 콧방울 양 끝 (왼 64, 오른 294 — alar wings)
+  const nostrilL = landmarks[64]
+  const nostrilR = landmarks[294]
+  if (faceWidth > 0 && nostrilL && nostrilR) {
+    out.push(makeAdv('nose_width', dist(nostrilL, nostrilR) / faceWidth))
+  }
+
+  // lip_thickness — 입술 윗 가장자리(13) ~ 아래 가장자리(14)
+  // 또는 더 정확히 윗입술 윗 0 ~ 아랫입술 아래 17 (전체)
+  const lipUpperOuter = landmarks[0]
+  const lipLowerOuter = landmarks[17]
+  if (faceHeight > 0 && lipUpperOuter && lipLowerOuter) {
+    out.push(makeAdv('lip_thickness', dist(lipUpperOuter, lipLowerOuter) / faceHeight))
   }
 
   return out
