@@ -30,13 +30,14 @@ export default function PalmResultScreen({
   onExit,
 }: Props) {
   const [hoverZone, setHoverZone] = useState<string | null>(null)
+  const [imageReady, setImageReady] = useState(false)
   const imgRef = useRef<HTMLImageElement | null>(null)
   const overlayRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
     const canvas = overlayRef.current
     const img = imgRef.current
-    if (!canvas || !img || !img.complete) return
+    if (!canvas || !img) return
     const w = img.clientWidth
     const h = img.clientHeight
     if (w === 0 || h === 0) return
@@ -45,42 +46,48 @@ export default function PalmResultScreen({
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     ctx.clearRect(0, 0, w, h)
-    if (!hoverZone) return
-    const zone = PALM_ZONES.find((z) => z.id === hoverZone)
-    if (!zone) return
-    const [aIdx, bIdx] = zone.anchorBetween
-    const a = landmarks[aIdx]
-    const b = landmarks[bIdx]
-    if (!a || !b) return
-    // 캡처 이미지가 mirror 되어 있어 x 좌표 반전 (1 - lm.x)
-    const ax = (1 - a.x) * w
-    const ay = a.y * h
-    const bx = (1 - b.x) * w
-    const by = b.y * h
-
-    // 손금선 직선 (anchor 두 점 사이) — 가이드 도식
-    ctx.strokeStyle = 'rgba(192, 57, 43, 0.85)'
-    ctx.lineWidth = 4
     ctx.lineCap = 'round'
-    ctx.beginPath()
-    ctx.moveTo(ax, ay)
-    ctx.lineTo(bx, by)
-    ctx.stroke()
 
-    // anchor 점 강조 (양 끝)
-    ctx.fillStyle = 'rgba(192, 57, 43, 0.95)'
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
-    ctx.lineWidth = 2
-    for (const [px, py] of [
-      [ax, ay],
-      [bx, by],
-    ]) {
+    // 모든 8 선을 항상 옅게 표시 — hover 안 해도 손금선 위치 보임
+    // hover된 선만 굵고 진하게 강조 (양방향 매칭)
+    for (const zone of PALM_ZONES) {
+      const [aIdx, bIdx] = zone.anchorBetween
+      const a = landmarks[aIdx]
+      const b = landmarks[bIdx]
+      if (!a || !b) continue
+      // 캡처 이미지 mirror 보정 (x = 1 - lm.x)
+      const ax = (1 - a.x) * w
+      const ay = a.y * h
+      const bx = (1 - b.x) * w
+      const by = b.y * h
+
+      const isActive = hoverZone === zone.id
+      ctx.strokeStyle = isActive
+        ? 'rgba(192, 57, 43, 0.9)'
+        : 'rgba(139, 105, 20, 0.45)'
+      ctx.lineWidth = isActive ? 5 : 2
       ctx.beginPath()
-      ctx.arc(px, py, 7, 0, Math.PI * 2)
-      ctx.fill()
+      ctx.moveTo(ax, ay)
+      ctx.lineTo(bx, by)
       ctx.stroke()
+
+      // 활성 선의 양 끝에만 흰 ring 점
+      if (isActive) {
+        ctx.fillStyle = 'rgba(192, 57, 43, 0.95)'
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
+        ctx.lineWidth = 2
+        for (const [px, py] of [
+          [ax, ay],
+          [bx, by],
+        ]) {
+          ctx.beginPath()
+          ctx.arc(px, py, 7, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.stroke()
+        }
+      }
     }
-  }, [hoverZone, landmarks])
+  }, [hoverZone, landmarks, imageReady])
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
@@ -102,7 +109,7 @@ export default function PalmResultScreen({
               ref={imgRef}
               src={captureDataUrl}
               alt="분석에 사용된 손 사진"
-              onLoad={() => setHoverZone((z) => z)}
+              onLoad={() => setImageReady(true)}
               className="w-full h-auto block"
             />
             <canvas
@@ -112,9 +119,9 @@ export default function PalmResultScreen({
             />
           </div>
           <figcaption className="px-4 py-2 text-xs text-[var(--color-secondary)] bg-[var(--color-surface)]">
-            노란 점 = 측정에 사용된 21 keypoint. 아래 손금선 카드에 마우스를 올리면
-            (모바일은 카드를 누르면) 해당 선 위치가 빨간 직선으로 표시됩니다. 가이드
-            도식이며 실제 손금 선 검출은 아닙니다.
+            노란 점 = 측정에 사용된 21 keypoint. 옅은 갈색 직선 = 8 손금선의 일반적
+            위치(가이드 도식). 아래 카드에 마우스 hover/탭하면 해당 선이 빨강으로
+            강조됩니다. 실제 손금 선 검출은 아닙니다.
           </figcaption>
         </figure>
       )}
