@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react'
+import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 import {
   PALM_ZONES,
   HAND_SHAPE_KAG_SLUG,
@@ -5,10 +7,12 @@ import {
   META_LINKS,
 } from '../data/palm-zones'
 import type { HandShapeResult } from '../lib/hand-shape'
+import { track } from '../lib/analytics'
 
 interface Props {
   handShape: HandShapeResult
   captureDataUrl: string
+  landmarks: NormalizedLandmark[]
   onRetake: () => void
   onExit: () => void
 }
@@ -21,9 +25,63 @@ interface Props {
 export default function PalmResultScreen({
   handShape,
   captureDataUrl,
+  landmarks,
   onRetake,
   onExit,
 }: Props) {
+  const [hoverZone, setHoverZone] = useState<string | null>(null)
+  const imgRef = useRef<HTMLImageElement | null>(null)
+  const overlayRef = useRef<HTMLCanvasElement | null>(null)
+
+  useEffect(() => {
+    const canvas = overlayRef.current
+    const img = imgRef.current
+    if (!canvas || !img || !img.complete) return
+    const w = img.clientWidth
+    const h = img.clientHeight
+    if (w === 0 || h === 0) return
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, w, h)
+    if (!hoverZone) return
+    const zone = PALM_ZONES.find((z) => z.id === hoverZone)
+    if (!zone) return
+    const [aIdx, bIdx] = zone.anchorBetween
+    const a = landmarks[aIdx]
+    const b = landmarks[bIdx]
+    if (!a || !b) return
+    // 캡처 이미지가 mirror 되어 있어 x 좌표 반전 (1 - lm.x)
+    const ax = (1 - a.x) * w
+    const ay = a.y * h
+    const bx = (1 - b.x) * w
+    const by = b.y * h
+
+    // 손금선 직선 (anchor 두 점 사이) — 가이드 도식
+    ctx.strokeStyle = 'rgba(192, 57, 43, 0.85)'
+    ctx.lineWidth = 4
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.moveTo(ax, ay)
+    ctx.lineTo(bx, by)
+    ctx.stroke()
+
+    // anchor 점 강조 (양 끝)
+    ctx.fillStyle = 'rgba(192, 57, 43, 0.95)'
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
+    ctx.lineWidth = 2
+    for (const [px, py] of [
+      [ax, ay],
+      [bx, by],
+    ]) {
+      ctx.beginPath()
+      ctx.arc(px, py, 7, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+    }
+  }, [hoverZone, landmarks])
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
       <p className="text-xs font-semibold uppercase tracking-widest mb-2 text-[var(--color-accent)]">
@@ -39,9 +97,24 @@ export default function PalmResultScreen({
 
       {captureDataUrl && (
         <figure className="mb-8 rounded-xl overflow-hidden border border-[var(--color-border)] bg-black">
-          <img src={captureDataUrl} alt="분석에 사용된 손 사진" className="w-full h-auto block" />
+          <div className="relative">
+            <img
+              ref={imgRef}
+              src={captureDataUrl}
+              alt="분석에 사용된 손 사진"
+              onLoad={() => setHoverZone((z) => z)}
+              className="w-full h-auto block"
+            />
+            <canvas
+              ref={overlayRef}
+              aria-hidden="true"
+              className="absolute inset-0 w-full h-full pointer-events-none"
+            />
+          </div>
           <figcaption className="px-4 py-2 text-xs text-[var(--color-secondary)] bg-[var(--color-surface)]">
-            노란 점 = 측정에 사용된 21 keypoint (브라우저 내 처리, 저장되지 않음)
+            노란 점 = 측정에 사용된 21 keypoint. 아래 손금선 카드에 마우스를 올리면
+            (모바일은 카드를 누르면) 해당 선 위치가 빨간 직선으로 표시됩니다. 가이드
+            도식이며 실제 손금 선 검출은 아닙니다.
           </figcaption>
         </figure>
       )}
@@ -76,27 +149,37 @@ export default function PalmResultScreen({
       <section aria-label="여덟 손금선" className="grid sm:grid-cols-2 gap-3 mb-8">
         {[...PALM_ZONES]
           .sort((a, b) => a.order - b.order)
-          .map((z) => (
-            <article
-              key={z.id}
-              className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5"
-            >
-              <h2 className="text-base font-semibold text-[var(--color-primary)] mb-2">
-                {z.name}
-              </h2>
-              <p className="text-sm text-[var(--color-primary)] leading-relaxed mb-3">
-                {z.meaning}
-              </p>
-              <a
-                href={`${KAG_BASE_URL}/${z.kagSlug}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-[var(--color-secondary)] hover:text-[var(--color-accent)] underline underline-offset-2"
+          .map((z) => {
+            const isActive = hoverZone === z.id
+            return (
+              <article
+                key={z.id}
+                onMouseEnter={() => setHoverZone(z.id)}
+                onMouseLeave={() => setHoverZone((cur) => (cur === z.id ? null : cur))}
+                onTouchStart={() => setHoverZone(z.id)}
+                className="rounded-xl border bg-[var(--color-surface)] p-5 transition-colors cursor-pointer"
+                style={{
+                  borderColor: isActive ? 'var(--color-accent)' : 'var(--color-border)',
+                }}
               >
-                이 선 전통 해석 더 깊이 보기 →
-              </a>
-            </article>
-          ))}
+                <h2 className="text-base font-semibold text-[var(--color-primary)] mb-2">
+                  {z.name}
+                </h2>
+                <p className="text-sm text-[var(--color-primary)] leading-relaxed mb-3">
+                  {z.meaning}
+                </p>
+                <a
+                  href={`${KAG_BASE_URL}/${z.kagSlug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => track('palm_kag_link_clicked', { zone: z.id })}
+                  className="text-xs text-[var(--color-secondary)] hover:text-[var(--color-accent)] underline underline-offset-2"
+                >
+                  이 선 전통 해석 더 깊이 보기 →
+                </a>
+              </article>
+            )
+          })}
       </section>
 
       <section

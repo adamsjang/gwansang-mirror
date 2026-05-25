@@ -265,6 +265,7 @@ export default function PalmApp() {
         <PalmResultScreen
           handShape={state.handShape}
           captureDataUrl={state.captureDataUrl}
+          landmarks={state.landmarks}
           onRetake={handleRetake}
           onExit={handleExit}
         />
