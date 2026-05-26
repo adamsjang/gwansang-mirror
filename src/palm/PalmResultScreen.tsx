@@ -40,6 +40,76 @@ export default function PalmResultScreen({
   const [sharing, setSharing] = useState(false)
   const [shareNotice, setShareNotice] = useState('')
 
+  // 관심 등록 상태
+  const [email, setEmail] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [emailError, setEmailError] = useState('')
+
+  const handArchetype = handShape.shape.id // fire/earth/air/water
+
+  useEffect(() => {
+    track('palm_interest_form_shown', { hand_shape: handArchetype })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function handleInterestSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const trimmed = email.trim()
+    if (!trimmed || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
+      setEmailError('이메일 형식을 확인해 주세요.')
+      return
+    }
+    setEmailError('')
+    setSubmitting(true)
+    track('palm_interest_submit_attempt', { hand_shape: handArchetype })
+    try {
+      const res = await fetch('/api/interest', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          email: trimmed,
+          source: 'palm',
+          archetype: handArchetype,
+        }),
+      })
+      if (res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { status?: string }
+        track('palm_interest_submitted', {
+          hand_shape: handArchetype,
+          storage: 'backend',
+          status: data.status ?? 'ok',
+        })
+        setSubmitted(true)
+        return
+      }
+      throw new Error(`server ${res.status}`)
+    } catch {
+      try {
+        const existing = JSON.parse(
+          localStorage.getItem('interest_emails_palm') ?? '[]'
+        ) as string[]
+        if (!existing.includes(trimmed)) existing.push(trimmed)
+        localStorage.setItem('interest_emails_palm', JSON.stringify(existing))
+      } catch {
+        /* ignore */
+      }
+      track('palm_interest_submitted', { hand_shape: handArchetype, storage: 'localStorage' })
+      setSubmitted(true)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const PREVIEW_BY_SHAPE: Record<string, string> = {
+    fire: '활동적·열정적 기질의 손입니다. 손금 8선이 빠른 호흡과 짧은 결단으로 모이는 양상이 전통 수상학에서 자주 다뤄지는데, 이 조합이 인생 어디서 어떻게 풀려나가는지는…',
+    earth:
+      '안정·실용의 기질이 두드러진 손입니다. 손금이 깊고 일정한 양상으로 다뤄지는 경향이 있는데, 이 흐름이 한 사람의 삶에서 어떻게 두꺼워지는지는…',
+    air: '사고·분석이 두드러진 손입니다. 손금이 가늘고 다양한 갈래로 뻗는 양상으로 봐 왔는데, 이 분포가 어느 시기에 어떻게 발현되는지는…',
+    water:
+      '감수성·직관의 기질이 두드러진 손입니다. 손금이 길고 부드럽게 흐르는 양상으로 다뤄지는데, 이 흐름이 인생의 어디서 깊어지는지는…',
+  }
+
   async function handleShare() {
     if (sharing) return
     setSharing(true)
@@ -245,6 +315,68 @@ export default function PalmResultScreen({
           <p role="status" aria-live="polite" className="mt-2 text-xs text-[var(--color-secondary)]">
             {shareNotice}
           </p>
+        )}
+      </section>
+
+      {/* Phase B1 — 통합 해석 잠금 + 관심 등록 */}
+      <section
+        aria-label="통합 해석 (정식 리포트)"
+        className="mb-8 rounded-xl border-2 border-dashed border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_4%,transparent)] p-5"
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <span aria-hidden="true" className="text-[var(--color-accent)]">🔒</span>
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-accent)]">
+            통합 해석 (정식 리포트, 준비 중)
+          </p>
+        </div>
+        <p className="text-sm font-semibold text-[var(--color-primary)] mb-3">
+          손 모양 × 손금 8선 조합 — 진짜 수상가가 보는 통변(通變)
+        </p>
+
+        <div className="mb-4 p-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]">
+          <p className="text-sm text-[var(--color-secondary)] leading-relaxed">
+            당신의 손은{' '}
+            <strong className="text-[var(--color-primary)]">
+              {handShape.shape.name} ({handShape.shape.hanja})
+            </strong>{' '}
+            — {PREVIEW_BY_SHAPE[handArchetype] ?? '이 조합이 전통 수상학에서 어떻게 통변되는지는…'}
+          </p>
+          <p className="mt-2 text-xs text-[var(--color-secondary)] italic">
+            이 뒤로 손 모양과 8선 조합의 통합 해석 + 캡처 이미지 + 측정값을 정리한
+            정식 리포트(PDF/PNG)가 이어집니다. 관심 있으시면 출시 안내를 받아 보세요.
+          </p>
+        </div>
+
+        {submitted ? (
+          <p className="text-sm text-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] border border-[var(--color-accent)] rounded-lg px-4 py-3">
+            관심 등록되었습니다. 정식 리포트가 준비되면 안내드리겠습니다.
+          </p>
+        ) : (
+          <form onSubmit={handleInterestSubmit} className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="email"
+              required
+              placeholder="이메일 (출시 안내용)"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={submitting}
+              aria-label="관심 등록 이메일"
+              className="flex-1 px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-sm focus:outline-none focus:border-[var(--color-accent)] disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity disabled:opacity-60"
+              style={{ backgroundColor: 'var(--color-accent)' }}
+            >
+              {submitting ? '등록 중…' : '관심 등록'}
+            </button>
+            {emailError && (
+              <p role="alert" className="text-xs text-red-700 self-center">
+                {emailError}
+              </p>
+            )}
+          </form>
         )}
       </section>
 

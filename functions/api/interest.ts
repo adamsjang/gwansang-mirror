@@ -16,7 +16,9 @@ interface Env {
 
 interface InterestBody {
   email?: string
-  archetype?: string // 'balance' | 'single' | 'cumulative' | 'mismatch' | undefined
+  archetype?: string // face: 'balance' | 'single' | 'cumulative' | 'mismatch'
+                     // palm: 'fire' | 'earth' | 'air' | 'water'
+  source?: string    // 'face' | 'palm'. 미지정 시 기본 'face' (구버전 호환)
 }
 
 function jsonResponse(body: unknown, status: number): Response {
@@ -47,9 +49,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return jsonResponse({ status: 'already' }, 200)
   }
 
+  const source = body.source === 'palm' ? 'palm' : 'face'
   const record = {
     email: rawEmail,
     archetype: typeof body.archetype === 'string' ? body.archetype.slice(0, 32) : null,
+    source,
     ts: new Date().toISOString(),
     ua: (context.request.headers.get('user-agent') ?? '').slice(0, 256),
     ip_country: context.request.headers.get('cf-ipcountry') ?? '',
