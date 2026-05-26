@@ -6,17 +6,24 @@ import {
   KAG_BASE_URL,
   META_LINKS,
 } from '../data/palm-zones'
-import type { HandShapeResult } from '../lib/hand-shape'
+import type { HandShapeResult, HandAdvancedMeasurement } from '../lib/hand-shape'
+import { ADVANCED_INTERPRETATIONS } from '../data/palm-interpretations'
 import { track } from '../lib/analytics'
 import { buildPalmShareImage } from '../lib/share-image-palm'
 import { shareOrDownload } from '../lib/share-image'
 
 interface Props {
   handShape: HandShapeResult
+  advanced: HandAdvancedMeasurement[]
   captureDataUrl: string
   landmarks: NormalizedLandmark[]
   onRetake: () => void
   onExit: () => void
+}
+
+function advLevelColor(level: 'low' | 'mid' | 'high') {
+  if (level === 'mid') return '#6B5744'
+  return '#8B6914'
 }
 
 /**
@@ -26,6 +33,7 @@ interface Props {
  */
 export default function PalmResultScreen({
   handShape,
+  advanced,
   captureDataUrl,
   landmarks,
   onRetake,
@@ -288,6 +296,42 @@ export default function PalmResultScreen({
             )
           })}
       </section>
+
+      {/* 정밀 측정 (β) */}
+      {advanced.length > 0 && (
+        <section aria-label="정밀 측정" className="mb-8">
+          <div className="flex items-baseline gap-2 mb-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-accent)]">
+              정밀 측정
+            </p>
+            <span className="text-xs text-[var(--color-secondary)]">β</span>
+          </div>
+          <div className="grid sm:grid-cols-3 gap-3">
+            {advanced.map((a) => {
+              const interpretation = ADVANCED_INTERPRETATIONS[a.id]?.[a.level]
+              return (
+                <article
+                  key={a.id}
+                  className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+                >
+                  <p className="text-xs text-[var(--color-secondary)] mb-1">{a.name}</p>
+                  <p
+                    className="text-base font-semibold mb-2"
+                    style={{ color: advLevelColor(a.level) }}
+                  >
+                    {a.levelLabel}
+                  </p>
+                  {interpretation && (
+                    <p className="text-xs text-[var(--color-primary)] leading-relaxed">
+                      {interpretation}
+                    </p>
+                  )}
+                </article>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       {/* 결과 이미지 공유 */}
       <section

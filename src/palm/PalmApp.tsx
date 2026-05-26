@@ -3,7 +3,12 @@ import { HandLandmarker, FilesetResolver, type NormalizedLandmark } from '@media
 import PalmIntroScreen from './PalmIntroScreen'
 import PalmCameraScreen from './PalmCameraScreen'
 import PalmResultScreen from './PalmResultScreen'
-import { classifyHandShape, type HandShapeResult } from '../lib/hand-shape'
+import {
+  classifyHandShape,
+  computeHandAdvancedMeasurements,
+  type HandShapeResult,
+  type HandAdvancedMeasurement,
+} from '../lib/hand-shape'
 import { track } from '../lib/analytics'
 
 type AppState =
@@ -12,6 +17,7 @@ type AppState =
   | {
       kind: 'result'
       handShape: HandShapeResult
+      advanced: HandAdvancedMeasurement[]
       captureDataUrl: string
       landmarks: NormalizedLandmark[]
     }
@@ -196,14 +202,22 @@ export default function PalmApp() {
         setErrorMsg('손 형태 분석에 실패했습니다. 다시 시도하세요.')
         return
       }
+      const advanced = computeHandAdvancedMeasurements(landmarks)
       const captureDataUrl = captureSnapshot(v, landmarks)
       stopStream()
       track('palm_analysis_completed', {
         hand_shape: shape.shape.id,
         palm_aspect: shape.palmAspect.toFixed(2),
         finger_ratio: shape.fingerRatio.toFixed(2),
+        advanced_count: advanced.length,
       })
-      setState({ kind: 'result', handShape: shape, captureDataUrl, landmarks })
+      setState({
+        kind: 'result',
+        handShape: shape,
+        advanced,
+        captureDataUrl,
+        landmarks,
+      })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
       setErrorMsg(`분석 실패: ${message}`)
@@ -264,6 +278,7 @@ export default function PalmApp() {
       {state.kind === 'result' && (
         <PalmResultScreen
           handShape={state.handShape}
+          advanced={state.advanced}
           captureDataUrl={state.captureDataUrl}
           landmarks={state.landmarks}
           onRetake={handleRetake}
