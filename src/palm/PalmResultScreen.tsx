@@ -8,6 +8,8 @@ import {
 } from '../data/palm-zones'
 import type { HandShapeResult } from '../lib/hand-shape'
 import { track } from '../lib/analytics'
+import { buildPalmShareImage } from '../lib/share-image-palm'
+import { shareOrDownload } from '../lib/share-image'
 
 interface Props {
   handShape: HandShapeResult
@@ -33,6 +35,34 @@ export default function PalmResultScreen({
   const [imageReady, setImageReady] = useState(false)
   const imgRef = useRef<HTMLImageElement | null>(null)
   const overlayRef = useRef<HTMLCanvasElement | null>(null)
+
+  // 공유 PNG 상태
+  const [sharing, setSharing] = useState(false)
+  const [shareNotice, setShareNotice] = useState('')
+
+  async function handleShare() {
+    if (sharing) return
+    setSharing(true)
+    setShareNotice('')
+    track('palm_share_clicked', { hand_shape: handShape.shape.id })
+    try {
+      const blob = await buildPalmShareImage({
+        captureDataUrl,
+        handShape: handShape.shape,
+      })
+      const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+      const result = await shareOrDownload(blob, `sugeum-${stamp}.png`)
+      track('palm_share_completed', { result, hand_shape: handShape.shape.id })
+      if (result === 'downloaded') setShareNotice('이미지를 저장했습니다.')
+      else if (result === 'cancelled') setShareNotice('공유가 취소되었습니다.')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      track('palm_share_failed', { message: message.slice(0, 200) })
+      setShareNotice('이미지 생성에 실패했습니다.')
+    } finally {
+      setSharing(false)
+    }
+  }
 
   useEffect(() => {
     const canvas = overlayRef.current
@@ -187,6 +217,35 @@ export default function PalmResultScreen({
               </article>
             )
           })}
+      </section>
+
+      {/* 결과 이미지 공유 */}
+      <section
+        aria-label="결과 공유"
+        className="mb-8 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5"
+      >
+        <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-accent)] mb-2">
+          결과 공유
+        </p>
+        <p className="text-sm text-[var(--color-secondary)] leading-relaxed mb-3">
+          캡처 손 사진과 손 모양 분류·8 손금선 안내를 한 장 이미지로 저장하거나
+          SNS·메신저로 공유할 수 있습니다. 손금 선 형태는 측정하지 않은 가이드
+          도식입니다.
+        </p>
+        <button
+          type="button"
+          onClick={handleShare}
+          disabled={sharing}
+          className="w-full sm:w-auto px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity disabled:opacity-60"
+          style={{ backgroundColor: 'var(--color-accent)' }}
+        >
+          {sharing ? '이미지 생성 중…' : '이미지 저장 / 공유'}
+        </button>
+        {shareNotice && (
+          <p role="status" aria-live="polite" className="mt-2 text-xs text-[var(--color-secondary)]">
+            {shareNotice}
+          </p>
+        )}
       </section>
 
       <section
