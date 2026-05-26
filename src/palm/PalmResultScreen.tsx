@@ -17,6 +17,8 @@ interface Props {
   advanced: HandAdvancedMeasurement[]
   captureDataUrl: string
   landmarks: NormalizedLandmark[]
+  /** true: 카메라 캡처(좌우 반전), false: 사진 업로드 원본 */
+  mirrored: boolean
   onRetake: () => void
   onExit: () => void
 }
@@ -36,6 +38,7 @@ export default function PalmResultScreen({
   advanced,
   captureDataUrl,
   landmarks,
+  mirrored,
   onRetake,
   onExit,
 }: Props) {
@@ -199,10 +202,10 @@ export default function PalmResultScreen({
       const a = landmarks[aIdx]
       const b = landmarks[bIdx]
       if (!a || !b) continue
-      // 캡처 이미지 mirror 보정 (x = 1 - lm.x)
-      const ax = (1 - a.x) * w
+      // 카메라(미러) vs 업로드 사진(원본) 분기
+      const ax = (mirrored ? 1 - a.x : a.x) * w
       const ay = a.y * h
-      const bx = (1 - b.x) * w
+      const bx = (mirrored ? 1 - b.x : b.x) * w
       const by = b.y * h
 
       const isActive = hoverZone === zone.id
@@ -231,7 +234,7 @@ export default function PalmResultScreen({
         }
       }
     }
-  }, [hoverZone, landmarks, imageReady])
+  }, [hoverZone, landmarks, imageReady, mirrored])
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">

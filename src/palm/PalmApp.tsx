@@ -3,23 +3,28 @@ import { HandLandmarker, FilesetResolver, type NormalizedLandmark } from '@media
 import PalmIntroScreen from './PalmIntroScreen'
 import PalmCameraScreen from './PalmCameraScreen'
 import PalmResultScreen from './PalmResultScreen'
+import UploadScreen from '../components/UploadScreen'
 import {
   classifyHandShape,
   computeHandAdvancedMeasurements,
   type HandShapeResult,
   type HandAdvancedMeasurement,
 } from '../lib/hand-shape'
+import { normalizeUploadedImage } from '../lib/image-input'
 import { track } from '../lib/analytics'
 
 type AppState =
   | { kind: 'intro' }
   | { kind: 'camera' }
+  | { kind: 'upload' }
   | {
       kind: 'result'
       handShape: HandShapeResult
       advanced: HandAdvancedMeasurement[]
       captureDataUrl: string
       landmarks: NormalizedLandmark[]
+      /** 카메라 캡처는 mirror, 업로드 사진은 그대로 */
+      mirrored: boolean
     }
 
 const WASM_BASE =
@@ -210,6 +215,7 @@ export default function PalmApp() {
         palm_aspect: shape.palmAspect.toFixed(2),
         finger_ratio: shape.fingerRatio.toFixed(2),
         advanced_count: advanced.length,
+        source: 'camera',
       })
       setState({
         kind: 'result',
@@ -217,6 +223,7 @@ export default function PalmApp() {
         advanced,
         captureDataUrl,
         landmarks,
+        mirrored: true,
       })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -229,6 +236,63 @@ export default function PalmApp() {
   function handleCancel() {
     stopStream()
     setState({ kind: 'intro' })
+  }
+
+  async function handleUploadStart() {
+    setErrorMsg('')
+    track('palm_upload_start_attempt')
+    try {
+      await ensureLandmarker()
+      setState({ kind: 'upload' })
+      track('palm_upload_started')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      setErrorMsg(`초기화 실패: ${message}`)
+      track('palm_upload_start_failed', { message: message.slice(0, 200) })
+    }
+  }
+
+  async function handleUploadAnalyze(file: File) {
+    if (!landmarkerRef.current) return
+    setIsAnalyzing(true)
+    setErrorMsg('')
+    try {
+      const { canvas, dataUrl } = await normalizeUploadedImage(file)
+      const result = landmarkerRef.current.detect(canvas)
+      const landmarks = result.landmarks[0]
+      if (!landmarks || landmarks.length === 0) {
+        setErrorMsg(
+          '손을 인식하지 못했습니다. 손바닥이 정면으로 잘 보이는 다른 사진으로 시도해 주세요.'
+        )
+        return
+      }
+      const shape = classifyHandShape(landmarks)
+      if (!shape) {
+        setErrorMsg('손 형태 분석에 실패했습니다.')
+        return
+      }
+      const advanced = computeHandAdvancedMeasurements(landmarks)
+      track('palm_analysis_completed', {
+        hand_shape: shape.shape.id,
+        palm_aspect: shape.palmAspect.toFixed(2),
+        finger_ratio: shape.fingerRatio.toFixed(2),
+        advanced_count: advanced.length,
+        source: 'upload',
+      })
+      setState({
+        kind: 'result',
+        handShape: shape,
+        advanced,
+        captureDataUrl: dataUrl,
+        landmarks,
+        mirrored: false,
+      })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      setErrorMsg(`분석 실패: ${message}`)
+    } finally {
+      setIsAnalyzing(false)
+    }
   }
 
   async function handleRetake() {
@@ -271,8 +335,23 @@ export default function PalmApp() {
               {errorMsg}
             </p>
           )}
-          <PalmIntroScreen onStart={handleStart} isLoading={isModelLoading} />
+          <PalmIntroScreen
+            onStart={handleStart}
+            onUpload={handleUploadStart}
+            isLoading={isModelLoading}
+          />
         </>
+      )}
+
+      {state.kind === 'upload' && (
+        <UploadScreen
+          subjectKor="손"
+          guideline="손바닥이 카메라(또는 사진 촬영 시 빛 쪽)를 향하고 다섯 손가락이 모두 보이는 사진을 선택하세요. 머리카락·소매에 가려지지 않을수록 정확합니다."
+          onAnalyze={handleUploadAnalyze}
+          onCancel={() => setState({ kind: 'intro' })}
+          isAnalyzing={isAnalyzing}
+          errorMsg={errorMsg}
+        />
       )}
 
       {state.kind === 'result' && (
@@ -281,6 +360,7 @@ export default function PalmApp() {
           advanced={state.advanced}
           captureDataUrl={state.captureDataUrl}
           landmarks={state.landmarks}
+          mirrored={state.mirrored}
           onRetake={handleRetake}
           onExit={handleExit}
         />
