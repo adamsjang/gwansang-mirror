@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { FaceLandmarker, FilesetResolver, type NormalizedLandmark } from '@mediapipe/tasks-vision'
 import IntroScreen from './components/IntroScreen'
 import CameraScreen from './components/CameraScreen'
+import UploadScreen from './components/UploadScreen'
 import ResultScreen from './components/ResultScreen'
 import { classifyFaceShape } from './lib/face-shape'
+import { normalizeUploadedImage } from './lib/image-input'
 import {
   computeMeasurements,
   computeAdvancedMeasurements,
@@ -16,6 +18,7 @@ import { track } from './lib/analytics'
 type AppState =
   | { kind: 'intro' }
   | { kind: 'camera' }
+  | { kind: 'upload' }
   | {
       kind: 'result'
       faceShape: FaceShape
@@ -23,6 +26,8 @@ type AppState =
       advanced: AdvancedMeasurement[]
       captureDataUrl: string
       landmarks: NormalizedLandmark[]
+      /** 카메라 캡처는 미러됨, 업로드는 그대로 — overlay·share PNG 좌표 분기에 사용 */
+      mirrored: boolean
     }
 
 const WASM_BASE =
@@ -225,6 +230,7 @@ export default function App() {
         face_shape: shape.id,
         measurement_count: measurements.length,
         advanced_count: advanced.length,
+        source: 'camera',
       })
       setState({
         kind: 'result',
@@ -233,6 +239,7 @@ export default function App() {
         advanced,
         captureDataUrl,
         landmarks,
+        mirrored: true,
       })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -245,6 +252,60 @@ export default function App() {
   function handleCancel() {
     stopStream()
     setState({ kind: 'intro' })
+  }
+
+  async function handleUploadStart() {
+    setErrorMsg('')
+    track('upload_start_attempt')
+    try {
+      await ensureLandmarker()
+      setState({ kind: 'upload' })
+      track('upload_started')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      setErrorMsg(`초기화 실패: ${message}`)
+      track('upload_start_failed', { message: message.slice(0, 200) })
+    }
+  }
+
+  async function handleUploadAnalyze(file: File) {
+    if (!landmarkerRef.current) return
+    setIsAnalyzing(true)
+    setErrorMsg('')
+    try {
+      const { canvas, dataUrl } = await normalizeUploadedImage(file)
+      const result = landmarkerRef.current.detect(canvas)
+      const landmarks = result.faceLandmarks[0]
+      if (!landmarks || landmarks.length === 0) {
+        setErrorMsg(
+          '얼굴을 인식하지 못했습니다. 정면 얼굴이 잘 보이는 다른 사진으로 시도해 주세요.'
+        )
+        return
+      }
+      const shape = classifyFaceShape(landmarks)
+      const measurements = computeMeasurements(landmarks)
+      const advanced = computeAdvancedMeasurements(landmarks)
+      track('analysis_completed', {
+        face_shape: shape.id,
+        measurement_count: measurements.length,
+        advanced_count: advanced.length,
+        source: 'upload',
+      })
+      setState({
+        kind: 'result',
+        faceShape: shape,
+        measurements,
+        advanced,
+        captureDataUrl: dataUrl,
+        landmarks,
+        mirrored: false,
+      })
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      setErrorMsg(`분석 실패: ${message}`)
+    } finally {
+      setIsAnalyzing(false)
+    }
   }
 
   async function handleRetake() {
@@ -288,8 +349,23 @@ export default function App() {
               {errorMsg}
             </p>
           )}
-          <IntroScreen onStart={handleStart} isLoading={isModelLoading} />
+          <IntroScreen
+            onStart={handleStart}
+            onUpload={handleUploadStart}
+            isLoading={isModelLoading}
+          />
         </>
+      )}
+
+      {state.kind === 'upload' && (
+        <UploadScreen
+          subjectKor="얼굴"
+          guideline="얼굴이 정면으로 잘 보이는 사진을 선택하세요. 머리카락·안경에 부위가 가려지지 않을수록 정확합니다."
+          onAnalyze={handleUploadAnalyze}
+          onCancel={() => setState({ kind: 'intro' })}
+          isAnalyzing={isAnalyzing}
+          errorMsg={errorMsg}
+        />
       )}
 
       {state.kind === 'result' && (
@@ -299,6 +375,7 @@ export default function App() {
           advanced={state.advanced}
           captureDataUrl={state.captureDataUrl}
           landmarks={state.landmarks}
+          mirrored={state.mirrored}
           onRetake={handleRetake}
           onExit={handleExit}
         />

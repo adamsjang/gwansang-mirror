@@ -2,10 +2,11 @@ import { useState } from 'react'
 
 interface Props {
   onStart: () => void
+  onUpload: () => void
   isLoading: boolean
 }
 
-export default function IntroScreen({ onStart, isLoading }: Props) {
+export default function IntroScreen({ onStart, onUpload, isLoading }: Props) {
   const [agreed, setAgreed] = useState(false)
 
   return (
@@ -71,15 +72,25 @@ export default function IntroScreen({ onStart, isLoading }: Props) {
         </span>
       </label>
 
-      <button
-        type="button"
-        onClick={onStart}
-        disabled={!agreed || isLoading}
-        className="w-full sm:w-auto px-6 py-3 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-40"
-        style={{ backgroundColor: 'var(--color-accent)' }}
-      >
-        {isLoading ? '모델 불러오는 중…' : '카메라 켜고 시작'}
-      </button>
+      <div className="flex flex-col sm:flex-row gap-3">
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={!agreed || isLoading}
+          className="flex-1 px-6 py-3 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-40"
+          style={{ backgroundColor: 'var(--color-accent)' }}
+        >
+          {isLoading ? '모델 불러오는 중…' : '카메라로 촬영'}
+        </button>
+        <button
+          type="button"
+          onClick={onUpload}
+          disabled={!agreed || isLoading}
+          className="px-6 py-3 rounded-xl border-2 border-[var(--color-accent)] text-sm font-semibold text-[var(--color-accent)] transition-opacity disabled:opacity-40 hover:bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
+        >
+          사진 업로드
+        </button>
+      </div>
 
       <p className="mt-8 text-xs text-[var(--color-secondary)] leading-relaxed">
         관상은 사람을 단정하는 잣대가 아니라 자기 이해의 한 관점입니다.

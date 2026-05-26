@@ -23,6 +23,8 @@ interface Props {
   advanced: AdvancedMeasurement[]
   captureDataUrl: string
   landmarks: NormalizedLandmark[]
+  /** true: 카메라 캡처(좌우 반전 이미지) — overlay 좌표 mirror 보정 */
+  mirrored: boolean
   onRetake: () => void
   onExit: () => void
 }
@@ -236,6 +238,7 @@ export default function ResultScreen({
   advanced,
   captureDataUrl,
   landmarks,
+  mirrored,
   onRetake,
   onExit,
 }: Props) {
@@ -298,15 +301,15 @@ export default function ResultScreen({
     for (const idx of zone.landmarkIndices) {
       const lm = landmarks[idx]
       if (!lm) continue
-      // 캡처 이미지가 mirror 되어 있으므로 x를 반전
-      const px = (1 - lm.x) * w
+      // 카메라 캡처는 mirror, 업로드 사진은 그대로
+      const px = (mirrored ? 1 - lm.x : lm.x) * w
       const py = lm.y * h
       ctx.beginPath()
       ctx.arc(px, py, 6, 0, Math.PI * 2)
       ctx.fill()
       ctx.stroke()
     }
-  }, [hoverZone, landmarks])
+  }, [hoverZone, landmarks, mirrored])
 
   async function handleShare() {
     if (sharing) return
