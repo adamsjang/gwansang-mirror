@@ -54,6 +54,42 @@ export default function PalmResultScreen({
   const [submitted, setSubmitted] = useState(false)
   const [emailError, setEmailError] = useState('')
 
+  // R&D 익명 데이터 기여 상태
+  const [contribConsent, setContribConsent] = useState(false)
+  const [contribSubmitting, setContribSubmitting] = useState(false)
+  const [contribSubmitted, setContribSubmitted] = useState(false)
+  const [contribError, setContribError] = useState('')
+
+  async function handleContribute() {
+    if (!contribConsent || contribSubmitting) return
+    setContribSubmitting(true)
+    setContribError('')
+    track('palm_contribute_attempt', { hand_shape: handArchetype })
+    try {
+      const res = await fetch('/api/contribute', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          imageDataUrl: captureDataUrl,
+          landmarks: landmarks.map((p) => ({ x: p.x, y: p.y, z: p.z })),
+          handShape: handArchetype,
+        }),
+      })
+      if (res.ok) {
+        track('palm_contribute_completed', { hand_shape: handArchetype })
+        setContribSubmitted(true)
+        return
+      }
+      throw new Error(`server ${res.status}`)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      track('palm_contribute_failed', { message: message.slice(0, 200) })
+      setContribError('기여 전송에 실패했습니다. 잠시 후 다시 시도하세요.')
+    } finally {
+      setContribSubmitting(false)
+    }
+  }
+
   const handArchetype = handShape.shape.id // fire/earth/air/water
 
   useEffect(() => {
@@ -421,6 +457,78 @@ export default function PalmResultScreen({
               </p>
             )}
           </form>
+        )}
+      </section>
+
+      {/* R&D 익명 데이터 기여 */}
+      <section
+        aria-label="R&D 데이터 기여"
+        className="mb-8 rounded-xl border border-[var(--color-border)] bg-[var(--color-base)] p-5"
+      >
+        <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-secondary)] mb-2">
+          R&D 데이터 기여 (선택)
+        </p>
+        <p className="text-sm text-[var(--color-secondary)] leading-relaxed mb-3">
+          손금 선 직접 인식을 위한 R&D 데이터셋에 본 분석의 손 사진과 키포인트를
+          익명으로 기여하실 수 있습니다. 사용자 식별 정보(이메일·IP 정확값)는
+          저장하지 않으며, 학습 모델 개발 외 용도로 사용하지 않습니다.
+        </p>
+        <dl className="text-xs text-[var(--color-secondary)] leading-relaxed space-y-1 mb-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-3">
+          <div className="flex gap-2">
+            <dt className="shrink-0 w-20 font-medium text-[var(--color-primary)]">처리 항목</dt>
+            <dd>손 사진(JPEG) + 21 keypoint 좌표 + 손 모양 분류</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="shrink-0 w-20 font-medium text-[var(--color-primary)]">처리 목적</dt>
+            <dd>손금 인식 모델 학습용 데이터셋 구성</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="shrink-0 w-20 font-medium text-[var(--color-primary)]">익명화</dt>
+            <dd>이메일·IP·User-Agent 정확값 미저장 (국가코드·해시만)</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="shrink-0 w-20 font-medium text-[var(--color-primary)]">외부 제공</dt>
+            <dd>제3자 제공·외부 공개 없음. 학습 후 mask annotation 추가 가능</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="shrink-0 w-20 font-medium text-[var(--color-primary)]">철회</dt>
+            <dd>익명 저장이라 개별 철회 불가 — 동의는 신중히</dd>
+          </div>
+        </dl>
+
+        {contribSubmitted ? (
+          <p className="text-sm text-[var(--color-primary)] bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)] border border-[var(--color-accent)] rounded-lg px-4 py-3">
+            기여 감사합니다. 손금 인식 모델 개발에 활용되겠습니다.
+          </p>
+        ) : (
+          <>
+            <label className="flex items-start gap-3 text-sm text-[var(--color-primary)] mb-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={contribConsent}
+                onChange={(e) => setContribConsent(e.target.checked)}
+                disabled={contribSubmitting}
+                className="mt-1 w-4 h-4 accent-[var(--color-accent)] shrink-0"
+              />
+              <span>
+                위 처리 항목·익명화·철회 불가 조건을 확인하였으며 익명 데이터 기여에
+                동의합니다.
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={handleContribute}
+              disabled={!contribConsent || contribSubmitting}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-lg text-sm font-semibold border border-[var(--color-accent)] text-[var(--color-accent)] transition-opacity disabled:opacity-40 hover:bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
+            >
+              {contribSubmitting ? '기여 전송 중…' : '익명 기여 보내기'}
+            </button>
+            {contribError && (
+              <p role="alert" className="mt-2 text-xs text-red-700">
+                {contribError}
+              </p>
+            )}
+          </>
         )}
       </section>
 

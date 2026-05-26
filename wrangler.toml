@@ -5,3 +5,7 @@ pages_build_output_dir = "dist"
 [[kv_namespaces]]
 binding = "INTEREST_KV"
 id = "54480d8216e54dd89d86808e47ddef3c"
+
+[[kv_namespaces]]
+binding = "CONTRIB_KV"
+id = "528659721479448e9e03a81342b55e40"
