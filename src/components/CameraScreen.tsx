@@ -5,7 +5,9 @@ interface Props {
   canvasRef: RefObject<HTMLCanvasElement | null>
   onAnalyze: () => void
   onCancel: () => void
+  onToggleCamera: () => void
   isAnalyzing: boolean
+  facingMode: 'user' | 'environment'
   errorMsg?: string
   visible: boolean
 }
@@ -15,10 +17,13 @@ export default function CameraScreen({
   canvasRef,
   onAnalyze,
   onCancel,
+  onToggleCamera,
   isAnalyzing,
+  facingMode,
   errorMsg,
   visible,
 }: Props) {
+  const isFront = facingMode === 'user'
   // visible=false일 때는 화면 밖으로 보내되 video element는 항상 마운트 유지.
   // iOS Safari는 user gesture 시점에 video element가 DOM에 있어야 play()를 허용.
   const offscreenStyle = visible
@@ -54,13 +59,22 @@ export default function CameraScreen({
           webkit-playsinline=""
           muted
           className="absolute inset-0 w-full h-full object-cover"
-          style={{ transform: 'scaleX(-1)' }}
+          style={{ transform: isFront ? 'scaleX(-1)' : 'none' }}
         />
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full pointer-events-none"
-          style={{ transform: 'scaleX(-1)' }}
+          style={{ transform: isFront ? 'scaleX(-1)' : 'none' }}
         />
+        <button
+          type="button"
+          onClick={onToggleCamera}
+          disabled={isAnalyzing}
+          aria-label={isFront ? '후면 카메라로 전환' : '전면 카메라로 전환'}
+          className="absolute top-3 right-3 px-3 py-1.5 rounded-lg text-xs font-semibold bg-black/60 text-white backdrop-blur-sm hover:bg-black/75 transition-colors disabled:opacity-40"
+        >
+          ↻ {isFront ? '후면' : '전면'}
+        </button>
       </div>
 
       <div className="mt-5 flex flex-col sm:flex-row gap-3">

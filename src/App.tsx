@@ -64,6 +64,7 @@ export default function App() {
   const [isModelLoading, setIsModelLoading] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string>('')
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -111,14 +112,34 @@ export default function App() {
     }
   }
 
-  async function startCameraAndPlay() {
+  async function startCameraAndPlay(mode: 'user' | 'environment' = facingMode) {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
+      video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 960 } },
       audio: false,
     })
     streamRef.current = stream
     if (videoRef.current) {
       await attachStreamAndPlay(videoRef.current, stream)
+    }
+  }
+
+  async function handleToggleCamera() {
+    const next = facingMode === 'user' ? 'environment' : 'user'
+    setErrorMsg('')
+    track('camera_facing_toggle', { from: facingMode, to: next })
+    stopStream()
+    try {
+      await startCameraAndPlay(next)
+      setFacingMode(next)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      setErrorMsg(`카메라 전환 실패: ${message}. 기존 카메라로 복귀합니다.`)
+      // 실패 시 원래 mode 복귀 시도
+      try {
+        await startCameraAndPlay(facingMode)
+      } catch {
+        /* 복귀도 실패하면 그대로 — 사용자가 카메라 끄기 가능 */
+      }
     }
   }
 
@@ -166,30 +187,33 @@ export default function App() {
     }
   }
 
-  /** video frame을 좌우 반전 + 부위 landmark 표시로 한 장 캡처. */
-  function captureSnapshot(video: HTMLVideoElement, landmarks: NormalizedLandmark[]): string {
+  /** video frame을 캡처. 전면(user)이면 좌우 반전, 후면이면 원본 그대로. */
+  function captureSnapshot(
+    video: HTMLVideoElement,
+    landmarks: NormalizedLandmark[],
+    mirror: boolean
+  ): string {
     const c = document.createElement('canvas')
     c.width = video.videoWidth
     c.height = video.videoHeight
     const ctx = c.getContext('2d')
     if (!ctx) return ''
     ctx.save()
-    // 사용자가 본 미러 뷰와 일치시키기 위해 좌우 반전
-    ctx.translate(c.width, 0)
-    ctx.scale(-1, 1)
+    if (mirror) {
+      ctx.translate(c.width, 0)
+      ctx.scale(-1, 1)
+    }
     ctx.drawImage(video, 0, 0, c.width, c.height)
     ctx.restore()
 
-    // 부위 강조 점 — 사용자가 결과 카드와 시각적으로 매칭할 수 있도록
+    // 부위 강조 점
     ctx.fillStyle = 'rgba(139, 105, 20, 0.9)'
     const zonePoints = new Set<number>()
     for (const z of ZONES) for (const i of z.landmarkIndices) zonePoints.add(i)
     for (const i of zonePoints) {
       const lm = landmarks[i]
       if (!lm) continue
-      // landmark는 정규화 좌표 (0~1). 미러된 캔버스 좌표계는 우→좌이므로
-      // 표시할 x를 (1 - lm.x)로 변환
-      const px = (1 - lm.x) * c.width
+      const px = (mirror ? 1 - lm.x : lm.x) * c.width
       const py = lm.y * c.height
       ctx.beginPath()
       ctx.arc(px, py, 3.5, 0, 2 * Math.PI)
@@ -224,13 +248,15 @@ export default function App() {
       const shape = classifyFaceShape(landmarks)
       const measurements = computeMeasurements(landmarks)
       const advanced = computeAdvancedMeasurements(landmarks)
-      const captureDataUrl = captureSnapshot(v, landmarks)
+      const isMirrored = facingMode === 'user'
+      const captureDataUrl = captureSnapshot(v, landmarks, isMirrored)
       stopStream()
       track('analysis_completed', {
         face_shape: shape.id,
         measurement_count: measurements.length,
         advanced_count: advanced.length,
         source: 'camera',
+        facing_mode: facingMode,
       })
       setState({
         kind: 'result',
@@ -239,7 +265,7 @@ export default function App() {
         advanced,
         captureDataUrl,
         landmarks,
-        mirrored: true,
+        mirrored: isMirrored,
       })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -334,7 +360,9 @@ export default function App() {
         canvasRef={canvasRef}
         onAnalyze={handleAnalyze}
         onCancel={handleCancel}
+        onToggleCamera={handleToggleCamera}
         isAnalyzing={isAnalyzing}
+        facingMode={facingMode}
         errorMsg={errorMsg && state.kind === 'camera' ? errorMsg : undefined}
         visible={state.kind === 'camera'}
       />

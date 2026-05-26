@@ -5,7 +5,9 @@ interface Props {
   canvasRef: RefObject<HTMLCanvasElement | null>
   onAnalyze: () => void
   onCancel: () => void
+  onToggleCamera: () => void
   isAnalyzing: boolean
+  facingMode: 'user' | 'environment'
   errorMsg?: string
   visible: boolean
 }
@@ -15,10 +17,13 @@ export default function PalmCameraScreen({
   canvasRef,
   onAnalyze,
   onCancel,
+  onToggleCamera,
   isAnalyzing,
+  facingMode,
   errorMsg,
   visible,
 }: Props) {
+  const isFront = facingMode === 'user'
   const offscreenStyle = visible
     ? undefined
     : ({ position: 'absolute', left: -99999, top: 0, opacity: 0, pointerEvents: 'none' } as const)
@@ -52,13 +57,22 @@ export default function PalmCameraScreen({
           webkit-playsinline=""
           muted
           className="absolute inset-0 w-full h-full object-cover"
-          style={{ transform: 'scaleX(-1)' }}
+          style={{ transform: isFront ? 'scaleX(-1)' : 'none' }}
         />
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full pointer-events-none"
-          style={{ transform: 'scaleX(-1)' }}
+          style={{ transform: isFront ? 'scaleX(-1)' : 'none' }}
         />
+        <button
+          type="button"
+          onClick={onToggleCamera}
+          disabled={isAnalyzing}
+          aria-label={isFront ? '후면 카메라로 전환' : '전면 카메라로 전환'}
+          className="absolute top-3 right-3 px-3 py-1.5 rounded-lg text-xs font-semibold bg-black/60 text-white backdrop-blur-sm hover:bg-black/75 transition-colors disabled:opacity-40"
+        >
+          ↻ {isFront ? '후면' : '전면'}
+        </button>
       </div>
 
       <div className="mt-5 flex flex-col sm:flex-row gap-3">

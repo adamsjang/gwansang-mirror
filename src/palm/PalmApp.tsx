@@ -63,6 +63,8 @@ export default function PalmApp() {
   const [isModelLoading, setIsModelLoading] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string>('')
+  // 손금은 후면 카메라가 더 유리한 경우 많음 (화질·초점). 단 첫 시도는 전면 기본.
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user')
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -109,14 +111,33 @@ export default function PalmApp() {
     }
   }
 
-  async function startCameraAndPlay() {
+  async function startCameraAndPlay(mode: 'user' | 'environment' = facingMode) {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
+      video: { facingMode: mode, width: { ideal: 1280 }, height: { ideal: 960 } },
       audio: false,
     })
     streamRef.current = stream
     if (videoRef.current) {
       await attachStreamAndPlay(videoRef.current, stream)
+    }
+  }
+
+  async function handleToggleCamera() {
+    const next = facingMode === 'user' ? 'environment' : 'user'
+    setErrorMsg('')
+    track('palm_camera_facing_toggle', { from: facingMode, to: next })
+    stopStream()
+    try {
+      await startCameraAndPlay(next)
+      setFacingMode(next)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      setErrorMsg(`카메라 전환 실패: ${message}. 기존 카메라로 복귀합니다.`)
+      try {
+        await startCameraAndPlay(facingMode)
+      } catch {
+        /* 복귀 실패도 무시 */
+      }
     }
   }
 
@@ -160,21 +181,27 @@ export default function PalmApp() {
     }
   }
 
-  function captureSnapshot(video: HTMLVideoElement, landmarks: NormalizedLandmark[]): string {
+  function captureSnapshot(
+    video: HTMLVideoElement,
+    landmarks: NormalizedLandmark[],
+    mirror: boolean
+  ): string {
     const c = document.createElement('canvas')
     c.width = video.videoWidth
     c.height = video.videoHeight
     const ctx = c.getContext('2d')
     if (!ctx) return ''
     ctx.save()
-    ctx.translate(c.width, 0)
-    ctx.scale(-1, 1)
+    if (mirror) {
+      ctx.translate(c.width, 0)
+      ctx.scale(-1, 1)
+    }
     ctx.drawImage(video, 0, 0, c.width, c.height)
     ctx.restore()
 
     ctx.fillStyle = 'rgba(139, 105, 20, 0.9)'
     for (const lm of landmarks) {
-      const px = (1 - lm.x) * c.width
+      const px = (mirror ? 1 - lm.x : lm.x) * c.width
       const py = lm.y * c.height
       ctx.beginPath()
       ctx.arc(px, py, 5, 0, Math.PI * 2)
@@ -208,7 +235,8 @@ export default function PalmApp() {
         return
       }
       const advanced = computeHandAdvancedMeasurements(landmarks)
-      const captureDataUrl = captureSnapshot(v, landmarks)
+      const isMirrored = facingMode === 'user'
+      const captureDataUrl = captureSnapshot(v, landmarks, isMirrored)
       stopStream()
       track('palm_analysis_completed', {
         hand_shape: shape.shape.id,
@@ -216,6 +244,7 @@ export default function PalmApp() {
         finger_ratio: shape.fingerRatio.toFixed(2),
         advanced_count: advanced.length,
         source: 'camera',
+        facing_mode: facingMode,
       })
       setState({
         kind: 'result',
@@ -223,7 +252,7 @@ export default function PalmApp() {
         advanced,
         captureDataUrl,
         landmarks,
-        mirrored: true,
+        mirrored: isMirrored,
       })
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -320,7 +349,9 @@ export default function PalmApp() {
         canvasRef={canvasRef}
         onAnalyze={handleAnalyze}
         onCancel={handleCancel}
+        onToggleCamera={handleToggleCamera}
         isAnalyzing={isAnalyzing}
+        facingMode={facingMode}
         errorMsg={errorMsg && state.kind === 'camera' ? errorMsg : undefined}
         visible={state.kind === 'camera'}
       />
