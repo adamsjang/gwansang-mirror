@@ -83,20 +83,20 @@ const FATE_CLARITY = [
   { value: 'broken_then_continues', label: '끊겼다가 다시 이어짐' },
 ] as const
 
-interface SelectRowProps<T extends string> {
+interface SelectRowProps {
   label: string
-  value: T | undefined
-  options: readonly { value: T; label: string }[]
-  onChange: (v: T | undefined) => void
+  value: string | undefined
+  options: readonly { value: string; label: string }[]
+  onChange: (v: string | undefined) => void
 }
 
-function SelectRow<T extends string>({ label, value, options, onChange }: SelectRowProps<T>) {
+function SelectRow({ label, value, options, onChange }: SelectRowProps) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-xs font-medium text-[var(--color-secondary)]">{label}</span>
       <select
         value={value ?? ''}
-        onChange={(e) => onChange((e.target.value || undefined) as T | undefined)}
+        onChange={(e) => onChange(e.target.value || undefined)}
         className="px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
       >
         <option value="">— 선택 —</option>
@@ -129,8 +129,21 @@ export default function PalmSelfInputForm({ initialHandShape }: Props) {
 
   const matched = useMemo<PalmRule[]>(() => evaluateRules(features), [features])
 
-  function patch<T>(set: (prev: PalmFeatures) => PalmFeatures) {
-    setFeatures((prev) => set(prev))
+  function patchPath(path: string, value: string | boolean | undefined) {
+    setFeatures((prev) => {
+      const keys = path.split('.')
+      // shallow clone path. PalmFeatures는 2-level이라 단순한 처리로 충분.
+      const next = { ...prev } as Record<string, unknown>
+      if (keys.length === 1) {
+        next[keys[0]] = value
+      } else {
+        const k1 = keys[0]
+        const sub = { ...((next[k1] as Record<string, unknown>) ?? {}) }
+        sub[keys[1]] = value
+        next[k1] = sub
+      }
+      return next as PalmFeatures
+    })
   }
 
   // fate exists 별도 처리 — 'present' / 'absent' / undefined
@@ -185,34 +198,19 @@ export default function PalmSelfInputForm({ initialHandShape }: Props) {
                 label="끝 위치"
                 value={features.heart_line?.end_position}
                 options={HEART_END}
-                onChange={(v) =>
-                  patch((p) => ({
-                    ...p,
-                    heart_line: { ...p.heart_line, end_position: v },
-                  }))
-                }
+                onChange={(v) => patchPath('heart_line.end_position', v)}
               />
               <SelectRow
                 label="모양"
                 value={features.heart_line?.shape}
                 options={HEART_SHAPE}
-                onChange={(v) =>
-                  patch((p) => ({
-                    ...p,
-                    heart_line: { ...p.heart_line, shape: v },
-                  }))
-                }
+                onChange={(v) => patchPath('heart_line.shape', v)}
               />
               <SelectRow
                 label="깊이/굵기"
                 value={features.heart_line?.depth}
                 options={HEART_DEPTH}
-                onChange={(v) =>
-                  patch((p) => ({
-                    ...p,
-                    heart_line: { ...p.heart_line, depth: v },
-                  }))
-                }
+                onChange={(v) => patchPath('heart_line.depth', v)}
               />
             </div>
           </fieldset>
@@ -227,34 +225,19 @@ export default function PalmSelfInputForm({ initialHandShape }: Props) {
                 label="생명선과의 시작점"
                 value={features.brain_line?.start_relation}
                 options={BRAIN_START}
-                onChange={(v) =>
-                  patch((p) => ({
-                    ...p,
-                    brain_line: { ...p.brain_line, start_relation: v },
-                  }))
-                }
+                onChange={(v) => patchPath('brain_line.start_relation', v)}
               />
               <SelectRow
                 label="길이"
                 value={features.brain_line?.length}
                 options={BRAIN_LENGTH}
-                onChange={(v) =>
-                  patch((p) => ({
-                    ...p,
-                    brain_line: { ...p.brain_line, length: v },
-                  }))
-                }
+                onChange={(v) => patchPath('brain_line.length', v)}
               />
               <SelectRow
                 label="모양"
                 value={features.brain_line?.shape}
                 options={BRAIN_SHAPE}
-                onChange={(v) =>
-                  patch((p) => ({
-                    ...p,
-                    brain_line: { ...p.brain_line, shape: v },
-                  }))
-                }
+                onChange={(v) => patchPath('brain_line.shape', v)}
               />
             </div>
           </fieldset>
@@ -269,45 +252,25 @@ export default function PalmSelfInputForm({ initialHandShape }: Props) {
                 label="길이"
                 value={features.life_line?.length}
                 options={LIFE_LENGTH}
-                onChange={(v) =>
-                  patch((p) => ({
-                    ...p,
-                    life_line: { ...p.life_line, length: v },
-                  }))
-                }
+                onChange={(v) => patchPath('life_line.length', v)}
               />
               <SelectRow
                 label="깊이/굵기"
                 value={features.life_line?.depth}
                 options={LIFE_DEPTH}
-                onChange={(v) =>
-                  patch((p) => ({
-                    ...p,
-                    life_line: { ...p.life_line, depth: v },
-                  }))
-                }
+                onChange={(v) => patchPath('life_line.depth', v)}
               />
               <SelectRow
                 label="곡선 폭"
                 value={features.life_line?.arc}
                 options={LIFE_ARC}
-                onChange={(v) =>
-                  patch((p) => ({
-                    ...p,
-                    life_line: { ...p.life_line, arc: v },
-                  }))
-                }
+                onChange={(v) => patchPath('life_line.arc', v)}
               />
               <SelectRow
                 label="분기"
                 value={features.life_line?.branches}
                 options={LIFE_BRANCHES}
-                onChange={(v) =>
-                  patch((p) => ({
-                    ...p,
-                    life_line: { ...p.life_line, branches: v },
-                  }))
-                }
+                onChange={(v) => patchPath('life_line.branches', v)}
               />
             </div>
           </fieldset>
@@ -325,9 +288,7 @@ export default function PalmSelfInputForm({ initialHandShape }: Props) {
                   className="mr-1 accent-[var(--color-accent)]"
                   name="fate-exists"
                   checked={fateExists === true}
-                  onChange={() =>
-                    patch((p) => ({ ...p, fate_line: { ...p.fate_line, exists: true } }))
-                  }
+                  onChange={() => patchPath('fate_line.exists', true)}
                 />
                 있음
               </label>
@@ -337,12 +298,10 @@ export default function PalmSelfInputForm({ initialHandShape }: Props) {
                   className="mr-1 accent-[var(--color-accent)]"
                   name="fate-exists"
                   checked={fateExists === false}
-                  onChange={() =>
-                    patch((p) => ({
-                      ...p,
-                      fate_line: { exists: false }, // 없으면 다른 fate 값 초기화
-                    }))
-                  }
+                  onChange={() => {
+                    // 없음 시 sub 값도 초기화
+                    setFeatures((prev) => ({ ...prev, fate_line: { exists: false } }))
+                  }}
                 />
                 없거나 안 보임
               </label>
@@ -352,9 +311,7 @@ export default function PalmSelfInputForm({ initialHandShape }: Props) {
                   className="mr-1 accent-[var(--color-accent)]"
                   name="fate-exists"
                   checked={fateExists === undefined}
-                  onChange={() =>
-                    patch((p) => ({ ...p, fate_line: { ...p.fate_line, exists: undefined } }))
-                  }
+                  onChange={() => patchPath('fate_line.exists', undefined)}
                 />
                 모름
               </label>
@@ -365,23 +322,13 @@ export default function PalmSelfInputForm({ initialHandShape }: Props) {
                   label="시작 위치"
                   value={features.fate_line?.start_position}
                   options={FATE_START}
-                  onChange={(v) =>
-                    patch((p) => ({
-                      ...p,
-                      fate_line: { ...p.fate_line, start_position: v },
-                    }))
-                  }
+                  onChange={(v) => patchPath('fate_line.start_position', v)}
                 />
                 <SelectRow
                   label="선명도"
                   value={features.fate_line?.clarity}
                   options={FATE_CLARITY}
-                  onChange={(v) =>
-                    patch((p) => ({
-                      ...p,
-                      fate_line: { ...p.fate_line, clarity: v },
-                    }))
-                  }
+                  onChange={(v) => patchPath('fate_line.clarity', v)}
                 />
               </div>
             )}
