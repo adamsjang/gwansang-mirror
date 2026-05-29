@@ -11,6 +11,7 @@ import { ADVANCED_INTERPRETATIONS } from '../data/palm-interpretations'
 import { track } from '../lib/analytics'
 import { buildPalmShareImage } from '../lib/share-image-palm'
 import { shareOrDownload } from '../lib/share-image'
+import PalmSelfInputForm from './PalmSelfInputForm'
 
 interface Props {
   handShape: HandShapeResult
@@ -371,6 +372,9 @@ export default function PalmResultScreen({
           </div>
         </section>
       )}
+
+      {/* 내 손금 직접 선택 → rule 매칭 */}
+      <PalmSelfInputForm initialHandShape={handShape.shape.id} />
 
       {/* 결과 이미지 공유 */}
       <section
